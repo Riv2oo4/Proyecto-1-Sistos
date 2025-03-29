@@ -415,3 +415,137 @@ void ChatClient::addMessage(const std::string &sender, const std::string &conten
                               gtk_text_buffer_get_mark(messageBuffer, "insert"),
                               0.0, FALSE, 0.0, 1.0);
 }
+
+// Actualizar lista de usuarios
+void ChatClient::updateUserList() {
+    std::lock_guard<std::mutex> lock(usersMutex);
+    
+    // Limpiar la lista actual
+    gtk_list_store_clear(userListStore);
+    
+    // Añadir los usuarios
+    for (const auto &user : connectedUsers) {
+        GtkTreeIter iter;
+        gtk_list_store_append(userListStore, &iter);
+        
+        std::string statusStr;
+        switch (user.status) {
+            case ACTIVE: statusStr = "ACTIVO"; break;
+            case BUSY: statusStr = "OCUPADO"; break;
+            case INACTIVE: statusStr = "INACTIVO"; break;
+        }
+        
+        gtk_list_store_set(userListStore, &iter,
+                        0, user.username.c_str(),
+                        1, statusStr.c_str(),
+                        -1);
+    }
+}
+
+// Manejador para el botón de enviar
+void ChatClient::onSendButtonClicked() {
+    const gchar *text = gtk_entry_get_text(GTK_ENTRY(messageEntry));
+    
+    if (text && *text) {
+        std::string input(text);
+        
+        // Limpiar el campo de entrada
+        gtk_entry_set_text(GTK_ENTRY(messageEntry), "");
+        
+        // Procesar comando o mensaje
+        if (input[0] == '/') {
+            // Extraer comando y argumentos
+            std::string cmd = input.substr(1);
+            size_t spacePos = cmd.find(' ');
+            std::string arg;
+            
+            if (spacePos != std::string::npos) {
+                arg = cmd.substr(spacePos + 1);
+                cmd = cmd.substr(0, spacePos);
+            }
+            
+            if (cmd == "msg" || cmd == "m") {
+                // Mensaje privado: /msg usuario mensaje
+                size_t msgStart = arg.find(' ');
+                if (msgStart != std::string::npos) {
+                    std::string recipient = arg.substr(0, msgStart);
+                    std::string message = arg.substr(msgStart + 1);
+                    
+                    sendMessage(DIRECT_MSG, message, recipient);
+                    addMessage(username, message, true, recipient);
+                } else {
+                    addMessage("Sistema", "Uso: /msg usuario mensaje");
+                }
+            } else if (cmd == "users" || cmd == "u") {
+                // Solicitar lista de usuarios
+                sendMessage(USER_LIST, "");
+            } else if (cmd == "info" || cmd == "i") {
+                // Solicitar información de un usuario: /info usuario
+                if (!arg.empty()) {
+                    sendMessage(USER_INFO, arg);
+                } else {
+                    addMessage("Sistema", "Uso: /info usuario");
+                }
+            } else if (cmd == "help" || cmd == "h") {
+                // Mostrar ayuda
+                addMessage("Sistema", "Comandos disponibles:");
+                addMessage("Sistema", "/msg, /m usuario mensaje - Enviar mensaje privado");
+                addMessage("Sistema", "/users, /u - Listar usuarios conectados");
+                addMessage("Sistema", "/info, /i usuario - Ver información de un usuario");
+                addMessage("Sistema", "/help, /h - Mostrar esta ayuda");
+                addMessage("Sistema", "/quit, /q - Salir del chat");
+            } else if (cmd == "quit" || cmd == "q") {
+                // Salir del chat
+                gtk_widget_destroy(window);
+            } else {
+                // Comando no reconocido
+                addMessage("Sistema", "Comando no reconocido. Usa /help para ver los comandos disponibles.");
+            }
+        } else {
+            // Es un mensaje de broadcast
+            sendMessage(BROADCAST_MSG, input);
+            addMessage(username, input);
+        }
+    }
+}
+
+// Función principal
+int main(int argc, char *argv[]) {
+    // Inicializar GTK
+    gtk_init(&argc, &argv);
+    
+    // Variables para la información de conexión
+    std::string username, serverIP;
+    int serverPort;
+    
+    // Mostrar ventana de login
+    if (!ChatClient::showLoginDialog(username, serverIP, serverPort)) {
+        return 0; // El usuario canceló
+    }
+    
+    // Crear e inicializar el cliente
+    ChatClient client;
+    if (!client.initialize(username, serverIP, serverPort)) {
+        GtkWidget *errorDialog = gtk_message_dialog_new(NULL,
+                                                     GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                     GTK_MESSAGE_ERROR,
+                                                     GTK_BUTTONS_CLOSE,
+                                                     "Error al conectar con el servidor %s:%d",
+                                                     serverIP.c_str(), serverPort);
+        gtk_dialog_run(GTK_DIALOG(errorDialog));
+        gtk_widget_destroy(errorDialog);
+        return 1;
+    }
+    
+    // Crear aplicación GTK
+    GtkApplication *app = gtk_application_new("org.chat.client", G_APPLICATION_DEFAULT_FLAGS);
+    g_signal_connect(app, "activate", G_CALLBACK(activate), &client);
+    
+    // Ejecutar la aplicación
+    int status = g_application_run(G_APPLICATION(app), 0, NULL);
+    
+    // Liberar recursos
+    g_object_unref(app);
+    
+    return status;
+}
