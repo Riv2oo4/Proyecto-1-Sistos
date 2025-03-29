@@ -4,6 +4,10 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <gtk/gtk.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 #include <cstring>
 
 // Definición de constantes
