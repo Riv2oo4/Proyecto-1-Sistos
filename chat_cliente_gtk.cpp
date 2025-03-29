@@ -509,6 +509,168 @@ void ChatClient::onSendButtonClicked() {
     }
 }
 
+// Manejador para el cambio de estado
+void ChatClient::onStatusChanged() {
+    gint active = gtk_combo_box_get_active(GTK_COMBO_BOX(statusComboBox));
+    
+    UserStatus newStatus;
+    switch (active) {
+        case 0: newStatus = ACTIVE; break;
+        case 1: newStatus = BUSY; break;
+        case 2: newStatus = INACTIVE; break;
+        default: newStatus = ACTIVE; break;
+    }
+    
+    // Actualizar estado local
+    status = newStatus;
+    
+    // Enviar cambio de estado al servidor
+    sendMessage(CHANGE_STATUS, std::to_string(static_cast<int>(newStatus)));
+}
+
+// Método estático para mostrar la ventana de login
+bool ChatClient::showLoginDialog(std::string &username, std::string &serverIP, int &serverPort) {
+    GtkWidget *dialog, *content_area;
+    GtkWidget *grid;
+    GtkWidget *usernameLabel, *usernameEntry;
+    GtkWidget *ipLabel, *ipEntry;
+    GtkWidget *portLabel, *portEntry;
+    GtkDialogFlags flags;
+    
+    // Crear diálogo
+    flags = static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT);
+    dialog = gtk_dialog_new_with_buttons("Iniciar sesión",
+                                       NULL,
+                                       flags,
+                                       "_Cancelar",
+                                       GTK_RESPONSE_CANCEL,
+                                       "_Conectar",
+                                       GTK_RESPONSE_ACCEPT,
+                                       NULL);
+    
+    // Obtener el área de contenido
+    content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    
+    // Crear una rejilla para organizar los widgets
+    grid = gtk_grid_new();
+    gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
+    gtk_grid_set_row_spacing(GTK_GRID(grid), 10);
+    gtk_widget_set_margin_start(grid, 20);
+    gtk_widget_set_margin_end(grid, 20);
+    gtk_widget_set_margin_top(grid, 20);
+    gtk_widget_set_margin_bottom(grid, 20);
+    gtk_container_add(GTK_CONTAINER(content_area), grid);
+    
+    // Campos de entrada
+    usernameLabel = gtk_label_new("Nombre de usuario:");
+    gtk_widget_set_halign(usernameLabel, GTK_ALIGN_START);
+    gtk_grid_attach(GTK_GRID(grid), usernameLabel, 0, 0, 1, 1);
+    
+    usernameEntry = gtk_entry_new();
+    gtk_entry_set_max_length(GTK_ENTRY(usernameEntry), MAX_USERNAME_LENGTH);
+    gtk_widget_set_hexpand(usernameEntry, TRUE);
+    gtk_grid_attach(GTK_GRID(grid), usernameEntry, 1, 0, 1, 1);
+    
+    ipLabel = gtk_label_new("IP del servidor:");
+    gtk_widget_set_halign(ipLabel, GTK_ALIGN_START);
+    gtk_grid_attach(GTK_GRID(grid), ipLabel, 0, 1, 1, 1);
+    
+    ipEntry = gtk_entry_new();
+    gtk_entry_set_text(GTK_ENTRY(ipEntry), "127.0.0.1");
+    gtk_widget_set_hexpand(ipEntry, TRUE);
+    gtk_grid_attach(GTK_GRID(grid), ipEntry, 1, 1, 1, 1);
+    
+    portLabel = gtk_label_new("Puerto del servidor:");
+    gtk_widget_set_halign(portLabel, GTK_ALIGN_START);
+    gtk_grid_attach(GTK_GRID(grid), portLabel, 0, 2, 1, 1);
+    
+    portEntry = gtk_entry_new();
+    gtk_entry_set_text(GTK_ENTRY(portEntry), "8080");
+    gtk_widget_set_hexpand(portEntry, TRUE);
+    gtk_grid_attach(GTK_GRID(grid), portEntry, 1, 2, 1, 1);
+    
+    // Validación numérica para el puerto
+    g_signal_connect(portEntry, "changed", G_CALLBACK(+[](GtkEditable *editable, gpointer user_data) {
+        gchar *text = gtk_editable_get_chars(editable, 0, -1);
+        
+        // Verificar que solo contenga dígitos
+        for (gchar *p = text; *p != '\0'; p++) {
+            if (*p < '0' || *p > '9') {
+                // Eliminar caracteres no numéricos
+                gchar *new_text = g_strdup(text);
+                gchar *q = new_text;
+                for (gchar *p = text; *p != '\0'; p++) {
+                    if (*p >= '0' && *p <= '9') {
+                        *q++ = *p;
+                    }
+                }
+                *q = '\0';
+                
+                // Actualizar el texto
+                // Simplemente aplicar el nuevo texto
+                gtk_entry_set_text(GTK_ENTRY(editable), new_text);
+                
+                g_free(new_text);
+                break;
+            }
+        }
+        
+        g_free(text);
+    }), NULL);
+    
+    // Mostrar todos los widgets
+    gtk_widget_show_all(dialog);
+    
+    // Ejecutar el diálogo
+    gint result = gtk_dialog_run(GTK_DIALOG(dialog));
+    
+    if (result == GTK_RESPONSE_ACCEPT) {
+        // Obtener valores
+        username = std::string(gtk_entry_get_text(GTK_ENTRY(usernameEntry)));
+        serverIP = std::string(gtk_entry_get_text(GTK_ENTRY(ipEntry)));
+        
+        // Convertir puerto a entero
+        try {
+            serverPort = std::stoi(std::string(gtk_entry_get_text(GTK_ENTRY(portEntry))));
+        } catch (...) {
+            serverPort = 8080; // Valor por defecto
+        }
+        
+        // Verificar entradas
+        if (username.empty()) {
+            GtkWidget *errorDialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
+                                                         GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                         GTK_MESSAGE_ERROR,
+                                                         GTK_BUTTONS_CLOSE,
+                                                         "El nombre de usuario no puede estar vacío");
+            gtk_dialog_run(GTK_DIALOG(errorDialog));
+            gtk_widget_destroy(errorDialog);
+            gtk_widget_destroy(dialog);
+            return false;
+        }
+        
+        if (serverIP.empty()) {
+            serverIP = "127.0.0.1"; // Valor por defecto
+        }
+        
+        if (serverPort <= 0 || serverPort > 65535) {
+            serverPort = 8080; // Valor por defecto
+        }
+        
+        gtk_widget_destroy(dialog);
+        return true;
+    } else {
+        gtk_widget_destroy(dialog);
+        return false;
+    }
+}
+
+// Función de activación para la aplicación GTK
+static void activate(GtkApplication *app, gpointer user_data) {
+    ChatClient *client = static_cast<ChatClient*>(user_data);
+    client->run(app);
+}
+
 // Función principal
 int main(int argc, char *argv[]) {
     // Inicializar GTK
