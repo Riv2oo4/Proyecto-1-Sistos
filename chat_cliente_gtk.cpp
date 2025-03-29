@@ -47,59 +47,62 @@ struct Message {
     std::string recipient;
 };
 
-// Clase del chat cliente
+// Clase principal del cliente de chat
 class ChatClient {
-    private:
-        // Conexión
-        std::string username;
-        std::string serverIP;
-        int serverPort;
-        int clientSocket;
-        
-        // Estado
-        std::atomic<bool> running;
-        std::atomic<UserStatus> status;
-        
-        // Lista de conectados
-        std::vector<User> connectedUsers;
-        std::mutex usersMutex;
-        
-        // Historial
-        std::vector<Message> messageHistory;
-        std::mutex messagesMutex;
-        
-        // Hilos de recepción
-        std::thread receiverThread;
+private:
+    // Información de conexión
+    std::string username;
+    std::string serverIP;
+    int serverPort;
+    int clientSocket;
     
-        GtkWidget *window;
-        GtkWidget *messageView;
-        GtkTextBuffer *messageBuffer;
-        GtkWidget *messageEntry;
-        GtkWidget *userListView;
-        GtkListStore *userListStore;
-        GtkWidget *statusComboBox;
-        
-        // Métodos privados
-        void messageReceiver();
-        bool sendMessage(MessageType type, const std::string &content, const std::string &recipient = "");
-        
-        void updateUserList();
-        void addMessage(const std::string &sender, const std::string &content, bool isPrivate = false, const std::string &recipient = "");
-        
-    public:
-        ChatClient();
-        ~ChatClient();
-        
-        bool initialize(const std::string &username, const std::string &serverIP, int serverPort);
-        void run(GtkApplication *app);
-        void shutdown();
-        void onSendButtonClicked();
-        void onStatusChanged();
-        void onWindowClosed();
-        
-        // Ventana de login
-        static bool showLoginDialog(std::string &username, std::string &serverIP, int &serverPort);
-    };
+    // Estado del cliente
+    std::atomic<bool> running;
+    std::atomic<UserStatus> status;
+    
+    // Lista de usuarios conectados
+    std::vector<User> connectedUsers;
+    std::mutex usersMutex;
+    
+    // Historial de mensajes
+    std::vector<Message> messageHistory;
+    std::mutex messagesMutex;
+    
+    // Hilos para recepción de mensajes
+    std::thread receiverThread;
+
+    // Widgets de GTK
+    GtkWidget *window;
+    GtkWidget *messageView;
+    GtkTextBuffer *messageBuffer;
+    GtkWidget *messageEntry;
+    GtkWidget *userListView;
+    GtkListStore *userListStore;
+    GtkWidget *statusComboBox;
+    
+    // Métodos privados
+    void messageReceiver();
+    bool sendMessage(MessageType type, const std::string &content, const std::string &recipient = "");
+    
+    void updateUserList();
+    void addMessage(const std::string &sender, const std::string &content, bool isPrivate = false, const std::string &recipient = "");
+    
+public:
+    ChatClient();
+    ~ChatClient();
+    
+    bool initialize(const std::string &username, const std::string &serverIP, int serverPort);
+    void run(GtkApplication *app);
+    void shutdown();
+    
+    // Métodos para eventos de GTK
+    void onSendButtonClicked();
+    void onStatusChanged();
+    void onWindowClosed();
+    
+    // Método estático para mostrar la ventana de login
+    static bool showLoginDialog(std::string &username, std::string &serverIP, int &serverPort);
+};
 
 // Constructor/Destructor
 ChatClient::ChatClient() : running(false), status(ACTIVE), clientSocket(-1) {}
@@ -108,7 +111,7 @@ ChatClient::~ChatClient() {
     shutdown();
 }
 
-// Inicialización
+// Inicialización del cliente
 bool ChatClient::initialize(const std::string &username, const std::string &serverIP, int serverPort) {
     this->username = username;
     this->serverIP = serverIP;
@@ -138,6 +141,8 @@ bool ChatClient::initialize(const std::string &username, const std::string &serv
         close(clientSocket);
         return false;
     }
+    
+    // Inicializar el estado
     running = true;
     status = ACTIVE;
     
@@ -150,7 +155,6 @@ bool ChatClient::initialize(const std::string &username, const std::string &serv
     
     return true;
 }
-
 
 // Método principal de ejecución
 void ChatClient::run(GtkApplication *app) {
@@ -299,6 +303,8 @@ void ChatClient::shutdown() {
         }
     }
 }
+
+// Hilo receptor de mensajes
 void ChatClient::messageReceiver() {
     char buffer[BUFFER_SIZE];
     
@@ -312,7 +318,7 @@ void ChatClient::messageReceiver() {
             
             // Actualizar la interfaz desde el hilo principal
             gdk_threads_add_idle(+[](gpointer data) -> gboolean {
-                ChatClient client = static_cast<ChatClient>(data);
+                ChatClient *client = static_cast<ChatClient*>(data);
                 client->addMessage("Servidor", std::string(static_cast<char*>(g_object_get_data(G_OBJECT(data), "buffer"))));
                 return FALSE;
             }, this);
@@ -321,7 +327,7 @@ void ChatClient::messageReceiver() {
         } else if (bytesRead == 0) {
             // Conexión cerrada por el servidor
             gdk_threads_add_idle(+[](gpointer data) -> gboolean {
-                ChatClient client = static_cast<ChatClient>(data);
+                ChatClient *client = static_cast<ChatClient*>(data);
                 client->addMessage("Sistema", "Conexión cerrada por el servidor");
                 return FALSE;
             }, this);
@@ -332,7 +338,7 @@ void ChatClient::messageReceiver() {
             // Error en la recepción
             if (running) {
                 gdk_threads_add_idle(+[](gpointer data) -> gboolean {
-                    ChatClient client = static_cast<ChatClient>(data);
+                    ChatClient *client = static_cast<ChatClient*>(data);
                     client->addMessage("Sistema", "Error al recibir datos del servidor");
                     return FALSE;
                 }, this);
@@ -346,6 +352,8 @@ void ChatClient::messageReceiver() {
 
 // Enviar mensaje al servidor
 bool ChatClient::sendMessage(MessageType type, const std::string &content, const std::string &recipient) {
+    // Aquí implementaríamos el formato según el protocolo acordado
+    // Por ahora, solo enviaremos el mensaje tal cual
     std::string message;
     
     switch (type) {
