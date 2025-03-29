@@ -46,3 +46,57 @@ struct Message {
     bool isPrivate;
     std::string recipient;
 };
+
+// Clase del chat cliente
+class ChatClient {
+    private:
+        // Conexión
+        std::string username;
+        std::string serverIP;
+        int serverPort;
+        int clientSocket;
+        
+        // Estado
+        std::atomic<bool> running;
+        std::atomic<UserStatus> status;
+        
+        // Lista de conectados
+        std::vector<User> connectedUsers;
+        std::mutex usersMutex;
+        
+        // Historial
+        std::vector<Message> messageHistory;
+        std::mutex messagesMutex;
+        
+        // Hilos de recepción
+        std::thread receiverThread;
+    
+        GtkWidget *window;
+        GtkWidget *messageView;
+        GtkTextBuffer *messageBuffer;
+        GtkWidget *messageEntry;
+        GtkWidget *userListView;
+        GtkListStore *userListStore;
+        GtkWidget *statusComboBox;
+        
+        // Métodos privados
+        void messageReceiver();
+        bool sendMessage(MessageType type, const std::string &content, const std::string &recipient = "");
+        
+        void updateUserList();
+        void addMessage(const std::string &sender, const std::string &content, bool isPrivate = false, const std::string &recipient = "");
+        
+    public:
+        ChatClient();
+        ~ChatClient();
+        
+        bool initialize(const std::string &username, const std::string &serverIP, int serverPort);
+        void run(GtkApplication *app);
+        void shutdown();
+        void onSendButtonClicked();
+        void onStatusChanged();
+        void onWindowClosed();
+        
+        // Ventana de login
+        static bool showLoginDialog(std::string &username, std::string &serverIP, int &serverPort);
+    };
