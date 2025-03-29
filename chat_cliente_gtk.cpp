@@ -278,3 +278,68 @@ void ChatClient::run(GtkApplication *app) {
     // Iniciar el hilo receptor de mensajes
     receiverThread = std::thread(&ChatClient::messageReceiver, this);
 }
+
+// Detener el cliente
+void ChatClient::shutdown() {
+    if (running) {
+        running = false;
+        
+        // Enviar mensaje de desconexión al servidor
+        sendMessage(DISCONNECT, username);
+        
+        // Cerrar el socket
+        if (clientSocket >= 0) {
+            close(clientSocket);
+            clientSocket = -1;
+        }
+        
+        // Esperar a que el hilo receptor termine
+        if (receiverThread.joinable()) {
+            receiverThread.join();
+        }
+    }
+}
+void ChatClient::messageReceiver() {
+    char buffer[BUFFER_SIZE];
+    
+    while (running) {
+        // Recibir datos del servidor
+        memset(buffer, 0, BUFFER_SIZE);
+        int bytesRead = recv(clientSocket, buffer, BUFFER_SIZE - 1, 0);
+        
+        if (bytesRead > 0) {
+            buffer[bytesRead] = '\0';
+            
+            // Actualizar la interfaz desde el hilo principal
+            gdk_threads_add_idle(+[](gpointer data) -> gboolean {
+                ChatClient client = static_cast<ChatClient>(data);
+                client->addMessage("Servidor", std::string(static_cast<char*>(g_object_get_data(G_OBJECT(data), "buffer"))));
+                return FALSE;
+            }, this);
+            
+            g_object_set_data_full(G_OBJECT(this), "buffer", g_strdup(buffer), g_free);
+        } else if (bytesRead == 0) {
+            // Conexión cerrada por el servidor
+            gdk_threads_add_idle(+[](gpointer data) -> gboolean {
+                ChatClient client = static_cast<ChatClient>(data);
+                client->addMessage("Sistema", "Conexión cerrada por el servidor");
+                return FALSE;
+            }, this);
+            
+            running = false;
+            break;
+        } else {
+            // Error en la recepción
+            if (running) {
+                gdk_threads_add_idle(+[](gpointer data) -> gboolean {
+                    ChatClient client = static_cast<ChatClient>(data);
+                    client->addMessage("Sistema", "Error al recibir datos del servidor");
+                    return FALSE;
+                }, this);
+                
+                running = false;
+                break;
+            }
+        }
+    }
+}
