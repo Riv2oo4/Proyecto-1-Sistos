@@ -100,3 +100,53 @@ class ChatClient {
         // Ventana de login
         static bool showLoginDialog(std::string &username, std::string &serverIP, int &serverPort);
     };
+
+// Constructor/Destructor
+ChatClient::ChatClient() : running(false), status(ACTIVE), clientSocket(-1) {}
+
+ChatClient::~ChatClient() {
+    shutdown();
+}
+
+// Inicialización
+bool ChatClient::initialize(const std::string &username, const std::string &serverIP, int serverPort) {
+    this->username = username;
+    this->serverIP = serverIP;
+    this->serverPort = serverPort;
+    
+    // Crear socket
+    clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (clientSocket < 0) {
+        std::cerr << "Error al crear el socket" << std::endl;
+        return false;
+    }
+    
+    // Configurar dirección del servidor
+    struct sockaddr_in serverAddr;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(serverPort);
+    
+    if (inet_pton(AF_INET, serverIP.c_str(), &serverAddr.sin_addr) <= 0) {
+        std::cerr << "Dirección IP inválida" << std::endl;
+        close(clientSocket);
+        return false;
+    }
+    
+    // Conectar al servidor
+    if (connect(clientSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+        std::cerr << "Error al conectar con el servidor" << std::endl;
+        close(clientSocket);
+        return false;
+    }
+    running = true;
+    status = ACTIVE;
+    
+    // Enviar mensaje de registro al servidor
+    if (!sendMessage(REGISTER_USER, username)) {
+        std::cerr << "Error al registrarse con el servidor" << std::endl;
+        shutdown();
+        return false;
+    }
+    
+    return true;
+}
