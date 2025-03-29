@@ -343,3 +343,75 @@ void ChatClient::messageReceiver() {
         }
     }
 }
+
+// Enviar mensaje al servidor
+bool ChatClient::sendMessage(MessageType type, const std::string &content, const std::string &recipient) {
+    std::string message;
+    
+    switch (type) {
+        case REGISTER_USER:
+            message = "REGISTER " + content;
+            break;
+        case USER_LIST:
+            message = "LIST";
+            break;
+        case USER_INFO:
+            message = "INFO " + content;
+            break;
+        case CHANGE_STATUS:
+            message = "STATUS " + content;
+            break;
+        case BROADCAST_MSG:
+            message = "BROADCAST " + content;
+            break;
+        case DIRECT_MSG:
+            message = "MSG " + recipient + " " + content;
+            break;
+        case DISCONNECT:
+            message = "DISCONNECT";
+            break;
+        default:
+            return false;
+    }
+    
+    // Enviar mensaje
+    int bytesSent = send(clientSocket, message.c_str(), message.length(), 0);
+    return bytesSent == static_cast<int>(message.length());
+}
+
+// Añadir mensaje al historial
+void ChatClient::addMessage(const std::string &sender, const std::string &content, bool isPrivate, const std::string &recipient) {
+    std::lock_guard<std::mutex> lock(messagesMutex);
+    
+    Message msg;
+    msg.sender = sender;
+    msg.content = content;
+    msg.isPrivate = isPrivate;
+    msg.recipient = recipient;
+    
+    messageHistory.push_back(msg);
+    
+    // Actualizar el área de texto
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(messageBuffer, &end);
+    
+    // Formatear el mensaje
+    std::string formattedMessage;
+    if (isPrivate) {
+        if (sender == username) {
+            formattedMessage = "[Privado a " + recipient + "]: " + content + "\n";
+        } else {
+            formattedMessage = "[Privado de " + sender + "]: " + content + "\n";
+        }
+    } else {
+        formattedMessage = sender + ": " + content + "\n";
+    }
+    
+    // Insertar el mensaje
+    gtk_text_buffer_insert(messageBuffer, &end, formattedMessage.c_str(), -1);
+    
+    // Hacer scroll al final
+    gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(messageView),
+                              gtk_text_buffer_get_mark(messageBuffer, "insert"),
+                              0.0, FALSE, 0.0, 1.0);
+}
