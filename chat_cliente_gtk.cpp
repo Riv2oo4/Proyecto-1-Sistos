@@ -27,3 +27,18 @@ enum UserStatus {
     BUSY = 2,
     INACTIVE = 3
 };
+
+// Estructura para representar un usuario
+struct User {
+    std::string username;
+    std::string ip;
+    UserStatus status;
+};
+
+// Estructura para representar un mensaje
+struct Message {
+    std::string sender;
+    std::string content;
+    bool isPrivate;
+    std::string recipient;
+};
