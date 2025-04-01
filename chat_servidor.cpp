@@ -793,8 +793,8 @@ class ConnectionHandler {
                 registry_.register_participant(participant_id_, ws, ws->next_layer().remote_endpoint().address());
                 
                 // Notify all participants about new connection
-                auto notification = ProtocolUtils::create_new_participant_notification(participant_id_);
-                registry_.broadcast(notification);
+                auto notification_join = ProtocolUtils::create_new_participant_notification(participant_id_);
+                registry_.broadcast(notification_join);
                 
                 // Handle messages
                 web::flat_buffer msg_buffer;
@@ -832,9 +832,9 @@ class ConnectionHandler {
                 logger_.record("Participant " + participant_id_ + " marked as OFFLINE");
                 
                 // Notify all other participants
-                auto notification = ProtocolUtils::create_availability_update(
+                auto notification_offline = ProtocolUtils::create_availability_update(
                     participant_id_, protocol::Availability::OFFLINE);
-                registry_.broadcast(notification);
+                registry_.broadcast(notification_offline);
                 
             } catch (const std::exception& e) {
                 logger_.record("Connection handling error: " + std::string(e.what()));
@@ -893,7 +893,7 @@ class ConnectionHandler {
                     break;
             }
         }
-    }
+    };
 
 // Main system class
 class MessageSystem {
