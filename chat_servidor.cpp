@@ -443,6 +443,68 @@ public:
     }
 };
 
+// Activity monitor
+class ActivityMonitor {
+    private:
+        ParticipantRegistry& registry_;
+        SystemLogger& logger_;
+        std::chrono::seconds inactivity_timeout_;
+        std::atomic<bool> running_;
+        std::thread monitor_thread_;
+        
+    public:
+        ActivityMonitor(ParticipantRegistry& registry, SystemLogger& logger, 
+                       std::chrono::seconds timeout = std::chrono::seconds(60))
+            : registry_(registry), logger_(logger), inactivity_timeout_(timeout), running_(true) {
+            
+            monitor_thread_ = std::thread([this]() {
+                this->monitor_loop();
+            });
+            
+            monitor_thread_.detach();
+        }
+        
+        ~ActivityMonitor() {
+            running_ = false;
+        }
+        
+        void set_timeout(std::chrono::seconds timeout) {
+            inactivity_timeout_ = timeout;
+            logger_.record("Inactivity timeout set to " + std::to_string(timeout.count()) + " seconds");
+        }
+        
+    private:
+        void monitor_loop() {
+            while (running_) {
+                std::this_thread::sleep_for(std::chrono::seconds(10));
+                
+                auto now = std::chrono::system_clock::now();
+                auto participants = registry_.get_all_participants();
+                
+                for (const auto& participant : participants) {
+                    if (participant->availability == protocol::Availability::AVAILABLE) {
+                        auto inactive_time = std::chrono::duration_cast<std::chrono::seconds>(
+                            now - participant->last_activity);
+                        
+                        if (inactive_time > inactivity_timeout_) {
+                            registry_.set_availability(participant->identifier, protocol::Availability::AWAY);
+                            
+                            logger_.record("Participant " + participant->identifier + 
+                                          " set to AWAY due to inactivity");
+                            
+                            auto notification = ProtocolUtils::create_availability_update(
+                                participant->identifier, protocol::Availability::AWAY);
+                            
+                            registry_.broadcast(notification);
+                        }
+                    }
+                }
+            }
+        }
+    };
+     
+
+
 // Request handler
 class RequestHandler {
 private:
@@ -721,65 +783,6 @@ public:
     }
 };
 
-// Activity monitor
-class ActivityMonitor {
-private:
-    ParticipantRegistry& registry_;
-    SystemLogger& logger_;
-    std::chrono::seconds inactivity_timeout_;
-    std::atomic<bool> running_;
-    std::thread monitor_thread_;
-    
-public:
-    ActivityMonitor(ParticipantRegistry& registry, SystemLogger& logger, 
-                   std::chrono::seconds timeout = std::chrono::seconds(60))
-        : registry_(registry), logger_(logger), inactivity_timeout_(timeout), running_(true) {
-        
-        monitor_thread_ = std::thread([this]() {
-            this->monitor_loop();
-        });
-        
-        monitor_thread_.detach();
-    }
-    
-    ~ActivityMonitor() {
-        running_ = false;
-    }
-    
-    void set_timeout(std::chrono::seconds timeout) {
-        inactivity_timeout_ = timeout;
-        logger_.record("Inactivity timeout set to " + std::to_string(timeout.count()) + " seconds");
-    }
-    
-private:
-    void monitor_loop() {
-        while (running_) {
-            std::this_thread::sleep_for(std::chrono::seconds(10));
-            
-            auto now = std::chrono::system_clock::now();
-            auto participants = registry_.get_all_participants();
-            
-            for (const auto& participant : participants) {
-                if (participant->availability == protocol::Availability::AVAILABLE) {
-                    auto inactive_time = std::chrono::duration_cast<std::chrono::seconds>(
-                        now - participant->last_activity);
-                    
-                    if (inactive_time > inactivity_timeout_) {
-                        registry_.set_availability(participant->identifier, protocol::Availability::AWAY);
-                        
-                        logger_.record("Participant " + participant->identifier + 
-                                      " set to AWAY due to inactivity");
-                        
-                        auto notification = ProtocolUtils::create_availability_update(
-                            participant->identifier, protocol::Availability::AWAY);
-                        
-                        registry_.broadcast(notification);
-                    }
-                }
-            }
-        }
-    }
-};
 
 // Entry point
 int main(int argc, char* argv[]) {
