@@ -180,3 +180,7 @@ private:
     bool puedeEnviarMensajes() const;
     bool estaConectado();
 };
+
+class VistaLogin: public wxFrame{
+
+};
