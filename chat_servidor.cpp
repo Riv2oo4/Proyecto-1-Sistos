@@ -759,7 +759,7 @@ class ConnectionHandler {
                 http::read(socket_, buffer, req);
                 
                 std::string query_string = extract_query_string(req.target());
-                participant_id_ = ProtocolUtils::parse_query_parameter(query_string, "id");
+                participant_id_ = ProtocolUtils::parse_query_parameter(query_string, "name");
                 
                 if (participant_id_.empty()) {
                     reject_connection("Empty participant identifier");
