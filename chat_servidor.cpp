@@ -356,17 +356,21 @@ public:
     
     void broadcast(const std::vector<uint8_t>& message) {
         std::lock_guard<std::mutex> lock(mutex_);
-        
+    
         for (auto& [id, participant] : participants_) {
-            if (participant->availability != protocol::Availability::OFFLINE) {
+            if (participant && participant->connection && participant->availability != protocol::Availability::OFFLINE) {
                 try {
-                    participant->connection->write(io::buffer(message));
+                    participant->connection->text(false); // 👈 false = mensaje binario
+                    participant->connection->write(boost::asio::buffer(message));
                 } catch (const std::exception& e) {
                     logger_.record("Failed to broadcast to " + id + ": " + e.what());
                 }
+            } else {
+                logger_.record("Omitido " + id + " (sin conexión o inactivo)");
             }
         }
     }
+    
 };
 
 // Central communication repository
@@ -533,6 +537,7 @@ public:
             }
         }
     }
+        
     
     void handle_participant_info(const std::string& requester, const std::vector<uint8_t>& data) {
         if (data.size() < 2) {
@@ -925,7 +930,7 @@ public:
     }
     
     void run() {
-        logger_.record("System starting...");
+        logger_.record("System Running...");
         
         while (true) {
             tcp::socket socket{io_context_};
