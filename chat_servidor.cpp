@@ -529,12 +529,22 @@ public:
         auto response = ProtocolUtils::create_participant_list(participants);
         
         auto requester_participant = registry_.get_participant(requester);
-        if (requester_participant) {
-            try {
-                requester_participant->connection->write(io::buffer(response));
-            } catch (const std::exception& e) {
-                logger_.record("Failed to send participant list to " + requester + ": " + e.what());
-            }
+    
+        if (!requester_participant) {
+            logger_.record("Requester " + requester + " no encontrado en el registro");
+            return;
+        }
+    
+        if (!requester_participant->connection) {
+            logger_.record("Conexión nula para el participante " + requester + ", no se puede enviar la lista");
+            return;
+        }
+    
+        try {
+            requester_participant->connection->text(false); // binario
+            requester_participant->connection->write(boost::asio::buffer(response));
+        } catch (const std::exception& e) {
+            logger_.record("Failed to send participant list to " + requester + ": " + e.what());
         }
     }
         
