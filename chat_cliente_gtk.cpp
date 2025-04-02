@@ -300,4 +300,478 @@ class LoginView : public wxFrame {
             }
         }).detach();
     }
+
     
+// Implementation of ChatView
+ChatView::ChatView(std::shared_ptr<websocket::stream<tcp::socket>> connection, const std::string& username)
+: wxFrame(nullptr, wxID_ANY, "Messenger - " + username, wxDefaultPosition, wxSize(800, 600)), 
+  connection(connection), 
+  currentUser(username),
+  isRunning(true),
+  userCurrentStatus(UserStatus::ONLINE) {
+
+// Initialize contacts with general chat and current user
+contactDirectory.insert({"~", Contact("General Chat", UserStatus::ONLINE)});
+contactDirectory.insert({username, Contact(username, UserStatus::ONLINE)});
+
+// Create UI
+wxPanel* mainPanel = new wxPanel(this);
+wxBoxSizer* mainLayout = new wxBoxSizer(wxHORIZONTAL);
+
+// Left panel - contacts and status
+wxBoxSizer* leftPanel = new wxBoxSizer(wxVERTICAL);
+
+// Status selector
+wxBoxSizer* statusLayout = new wxBoxSizer(wxHORIZONTAL);
+statusLayout->Add(new wxStaticText(mainPanel, wxID_ANY, "Status:"), 
+                0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+wxString statusOptions[] = {"Online", "Busy", "Away"};
+statusSelector = new wxChoice(mainPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, 3, statusOptions);
+statusSelector->SetSelection(0);
+statusLayout->Add(statusSelector, 1, wxALL, 5);
+
+leftPanel->Add(statusLayout, 0, wxEXPAND);
+
+// Status display
+statusDisplayLabel = new wxStaticText(mainPanel, wxID_ANY, "Current status: ONLINE");
+statusDisplayLabel->SetForegroundColour(wxColour(0, 128, 0));
+leftPanel->Add(statusDisplayLabel, 0, wxALL, 5);
+
+// Contact list
+leftPanel->Add(new wxStaticText(mainPanel, wxID_ANY, "Contacts:"), 0, wxALL, 5);
+contactListBox = new wxListBox(mainPanel, wxID_ANY);
+leftPanel->Add(contactListBox, 1, wxALL | wxEXPAND, 5);
+
+// Contact management buttons
+wxBoxSizer* contactButtonLayout = new wxBoxSizer(wxHORIZONTAL);
+
+addContactButton = new wxButton(mainPanel, wxID_ANY, "Add");
+contactButtonLayout->Add(addContactButton, 1, wxALL, 5);
+
+userInfoButton = new wxButton(mainPanel, wxID_ANY, "Info");
+contactButtonLayout->Add(userInfoButton, 1, wxALL, 5);
+
+refreshButton = new wxButton(mainPanel, wxID_ANY, "Refresh");
+contactButtonLayout->Add(refreshButton, 1, wxALL, 5);
+
+leftPanel->Add(contactButtonLayout, 0, wxEXPAND);
+
+// Right panel - chat
+wxBoxSizer* rightPanel = new wxBoxSizer(wxVERTICAL);
+
+// Chat title
+chatTitleLabel = new wxStaticText(mainPanel, wxID_ANY, "Chat with: [Select a contact]");
+rightPanel->Add(chatTitleLabel, 0, wxALL, 5);
+
+// Chat history display
+chatHistoryDisplay = new wxTextCtrl(mainPanel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, 
+                                 wxTE_MULTILINE | wxTE_READONLY | wxTE_RICH2);
+rightPanel->Add(chatHistoryDisplay, 1, wxALL | wxEXPAND, 5);
+
+// Message input and send button
+wxBoxSizer* messageInputLayout = new wxBoxSizer(wxHORIZONTAL);
+messageInputField = new wxTextCtrl(mainPanel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
+messageInputLayout->Add(messageInputField, 1, wxALL, 5);
+
+sendMessageButton = new wxButton(mainPanel, wxID_ANY, "Send");
+messageInputLayout->Add(sendMessageButton, 0, wxALL, 5);
+
+rightPanel->Add(messageInputLayout, 0, wxEXPAND);
+
+// Arrange panels
+mainLayout->Add(leftPanel, 1, wxEXPAND | wxALL, 10);
+mainLayout->Add(rightPanel, 2, wxEXPAND | wxALL, 10);
+
+// Bind events
+sendMessageButton->Bind(wxEVT_BUTTON, &ChatView::onSendMessage, this);
+messageInputField->Bind(wxEVT_TEXT_ENTER, &ChatView::onSendMessage, this);
+addContactButton->Bind(wxEVT_BUTTON, &ChatView::onAddContact, this);
+userInfoButton->Bind(wxEVT_BUTTON, &ChatView::onRequestUserInfo, this);
+refreshButton->Bind(wxEVT_BUTTON, &ChatView::onRefreshContacts, this);
+contactListBox->Bind(wxEVT_LISTBOX, &ChatView::onContactSelected, this);
+statusSelector->Bind(wxEVT_CHOICE, &ChatView::onStatusChanged, this);
+
+// Set up layout
+mainPanel->SetSizer(mainLayout);
+mainLayout->Fit(this);
+
+// Start network operations
+startMessageListener();
+fetchUserList();
+updateContactList();
+
+// Select general chat by default
+contactListBox->SetSelection(contactListBox->FindString("[+] General Chat"));
+activeChatPartner = "~";
+chatTitleLabel->SetLabel("Chat with: General Chat");
+}
+
+ChatView::~ChatView() {
+isRunning = false;
+try {
+    connection->close(websocket::close_code::normal);
+} catch (...) {
+    // Ignore exceptions during cleanup
+}
+}
+
+void ChatView::fetchUserList() {
+try {
+    std::vector<uint8_t> request = createUserListRequest();
+    connection->write(net::buffer(request));
+} catch (const std::exception& e) {
+    wxMessageBox("Error requesting user list: " + std::string(e.what()),
+               "Error", wxOK | wxICON_ERROR);
+}
+}
+
+void ChatView::fetchChatHistory() {
+if (activeChatPartner.empty()) return;
+
+try {
+    std::vector<uint8_t> request = createHistoryRequest(activeChatPartner);
+    connection->write(net::buffer(request));
+} catch (const std::exception& e) {
+    wxMessageBox("Error requesting chat history: " + std::string(e.what()),
+               "Error", wxOK | wxICON_ERROR);
+}
+}
+
+bool ChatView::canSendMessages() const {
+return userCurrentStatus == UserStatus::ONLINE || userCurrentStatus == UserStatus::AWAY;
+}
+
+bool ChatView::isConnected() {
+if (!connection) return false;
+
+try {
+    return connection->is_open() && connection->next_layer().is_open();
+} catch (...) {
+    return false;
+}
+}
+
+void ChatView::onSendMessage(wxCommandEvent&) {
+if (activeChatPartner.empty()) {
+    wxMessageBox("Please select a contact first", "Notice", wxOK | wxICON_INFORMATION);
+    return;
+}
+
+if (!canSendMessages()) {
+    wxMessageBox("You can't send messages while BUSY or OFFLINE",
+               "Notice", wxOK | wxICON_WARNING);
+    return;
+}
+
+if (!checkConnection()) {
+    return;  
+}
+
+std::string messageText = messageInputField->GetValue().ToStdString();
+if (messageText.empty()) return;
+
+try {
+    std::vector<uint8_t> messageData = createSendMessageRequest(activeChatPartner, messageText);
+    if (messageData.empty()) return; 
+
+    try {
+        connection->write(net::buffer(messageData));
+        messageInputField->Clear();
+    } catch (const std::exception& e) {
+        if (reconnect()) {
+            try {
+                connection->write(net::buffer(messageData));
+                messageInputField->Clear();
+                wxMessageBox("Message sent after reconnecting", "Reconnection Successful", wxOK | wxICON_INFORMATION);
+            } catch (const std::exception& e2) {
+                wxMessageBox("Couldn't send message after reconnecting: " + std::string(e2.what()),
+                           "Error", wxOK | wxICON_ERROR);
+            }
+        } else {
+            wxMessageBox("Error sending message: " + std::string(e.what()),
+                       "Error", wxOK | wxICON_ERROR);
+        }
+    }
+} catch (const std::exception& e) {
+    wxMessageBox("Error preparing message: " + std::string(e.what()),
+               "Error", wxOK | wxICON_ERROR);
+}
+}
+
+void ChatView::startMessageListener() {
+std::thread([this]() {
+    try {
+        while (isRunning) {
+            beast::flat_buffer buffer;
+            connection->read(buffer);
+            
+            // Convert received data to vector
+            std::string dataStr = beast::buffers_to_string(buffer.data());
+            std::vector<uint8_t> message(dataStr.begin(), dataStr.end());
+            
+            if (!message.empty()) {
+                uint8_t messageType = message[0];
+                
+                // Process message based on type
+                switch (messageType) {
+                    case MSG_SERVER_ERROR:
+                        handleErrorMessage(message);
+                        break;
+                    case MSG_SERVER_USER_LIST:
+                        handleUserListMessage(message);
+                        break;
+                    case MSG_SERVER_USER_INFO:
+                        handleUserInfoMessage(message);
+                        break;
+                    case MSG_SERVER_USER_JOINED:
+                        handleNewUserMessage(message);
+                        break;
+                    case MSG_SERVER_STATUS_UPDATE:
+                        handleStatusChangeMessage(message);
+                        break;
+                    case MSG_SERVER_NEW_MESSAGE:
+                        handleChatMessage(message);
+                        break;
+                    case MSG_SERVER_CHAT_HISTORY:
+                        handleChatHistoryMessage(message);
+                        break;
+                    default:
+                        // Unknown message type
+                        break;
+                }
+            }
+        }
+    } catch (const beast::error_code& ec) {
+        if (ec == websocket::error::closed) {
+            wxGetApp().CallAfter([this]() {
+                wxMessageBox("Connection closed by server", "Notice", wxOK | wxICON_INFORMATION);
+                Close();
+            });
+        } else {
+            wxGetApp().CallAfter([this, ec]() {
+                wxMessageBox("Connection error: " + ec.message(),
+                           "Error", wxOK | wxICON_ERROR);
+                Close();
+            });
+        }
+    } catch (const std::exception& e) {
+        wxGetApp().CallAfter([this, e]() {
+            wxMessageBox("Connection error: " + std::string(e.what()),
+                       "Error", wxOK | wxICON_ERROR);
+            Close();
+        });
+    }
+}).detach();
+}
+
+void ChatView::onAddContact(wxCommandEvent&) {
+wxTextEntryDialog dialog(this, "Enter contact username:",
+                       "Add Contact", "");
+
+if (dialog.ShowModal() == wxID_OK) {
+    std::string contactName = dialog.GetValue().ToStdString();
+    if (!contactName.empty()) {
+        try {
+            std::vector<uint8_t> request = createUserInfoRequest(contactName);
+            connection->write(net::buffer(request));
+        } catch (const std::exception& e) {
+            wxMessageBox("Error requesting user information: " + std::string(e.what()),
+                       "Error", wxOK | wxICON_ERROR);
+        }
+    }
+}
+}
+
+void ChatView::onContactSelected(wxCommandEvent& evt) {
+wxString selectedItem = contactListBox->GetString(evt.GetSelection());
+wxString contactName = selectedItem.AfterFirst(']').Trim(true).Trim(false);
+
+if (contactName == "General Chat") {
+    activeChatPartner = "~";  
+} else {
+    activeChatPartner = contactName.ToStdString();
+}
+
+wxString titleText = wxString("Chat with: ") + 
+                  (activeChatPartner == "~" ? wxString("General Chat") : wxString(activeChatPartner));
+chatTitleLabel->SetLabel(titleText);
+
+chatHistoryDisplay->Clear();
+fetchChatHistory();
+}
+
+void ChatView::onRequestUserInfo(wxCommandEvent&) {
+if (contactListBox->GetSelection() == wxNOT_FOUND) {
+    wxMessageBox("Please select a user first", "Notice", wxOK | wxICON_INFORMATION);
+    return;
+}
+
+if (!checkConnection()) {
+    return; 
+}
+
+wxString selectedItem = contactListBox->GetString(contactListBox->GetSelection());
+wxString contactName = selectedItem.AfterFirst(']').Trim(true).Trim(false);
+std::string username = contactName.ToStdString();
+
+if (username == "General Chat" || username == "~") {
+    wxMessageBox("Cannot get information for general chat", "Notice", wxOK | wxICON_INFORMATION);
+    return;
+}
+
+try {
+    std::vector<uint8_t> request = createUserInfoRequest(username);
+    connection->write(net::buffer(request));
+} catch (const std::exception& e) {
+    if (reconnect()) {
+        try {
+            std::vector<uint8_t> request = createUserInfoRequest(username);
+            connection->write(net::buffer(request));
+        } catch (const std::exception& e2) {
+            wxMessageBox("Couldn't get user information after reconnecting: " + std::string(e2.what()),
+                       "Error", wxOK | wxICON_ERROR);
+        }
+    } else {
+        wxMessageBox("Error requesting user information: " + std::string(e.what()),
+                   "Error", wxOK | wxICON_ERROR);
+    }
+}
+}
+
+void ChatView::onRefreshContacts(wxCommandEvent&) {
+fetchUserList();
+}
+
+void ChatView::updateStatusDisplay() {
+wxString statusString;
+wxColour statusColor;
+
+switch (userCurrentStatus) {
+    case UserStatus::ONLINE:
+        statusString = "ONLINE";
+        statusColor = wxColour(0, 128, 0);  // Green
+        break;
+    case UserStatus::BUSY:
+        statusString = "BUSY";
+        statusColor = wxColour(255, 0, 0);  // Red
+        break;
+    case UserStatus::AWAY:
+        statusString = "AWAY";
+        statusColor = wxColour(128, 128, 0); // Yellow
+        break;
+    case UserStatus::OFFLINE:
+        statusString = "OFFLINE";
+        statusColor = wxColour(128, 128, 128); // Gray
+        break;
+}
+
+statusDisplayLabel->SetLabel("Current status: " + statusString);
+statusDisplayLabel->SetForegroundColour(statusColor);
+
+// Update user's status in contact list
+auto it = contactDirectory.find(currentUser);
+if (it != contactDirectory.end()) {
+    it->second.setStatus(userCurrentStatus);
+}
+
+updateContactList();
+}
+
+void ChatView::onStatusChanged(wxCommandEvent&) {
+int selection = statusSelector->GetSelection();
+UserStatus newStatus;
+
+switch (selection) {
+    case 0: newStatus = UserStatus::ONLINE; break;
+    case 1: newStatus = UserStatus::BUSY; break;
+    case 2: newStatus = UserStatus::AWAY; break;
+    default: newStatus = UserStatus::ONLINE; break;
+}
+
+UserStatus previousStatus = userCurrentStatus;
+
+try {
+    std::vector<uint8_t> statusUpdate = createStatusUpdateRequest(newStatus);
+    
+    // Update UI first
+    userCurrentStatus = newStatus;
+    updateStatusDisplay();
+
+    // Send status update to server
+    connection->write(net::buffer(statusUpdate));
+
+    // Refresh user list
+    std::vector<uint8_t> refreshRequest = createUserListRequest();
+    connection->write(net::buffer(refreshRequest));
+    
+    std::cout << "Status change message sent successfully" << std::endl;
+    
+} catch (const std::exception& e) {
+    std::cerr << "Error changing status: " << e.what() << std::endl;
+
+    // Revert to previous status on error
+    userCurrentStatus = previousStatus;
+    updateStatusDisplay();
+    
+    wxMessageBox("Error changing status: " + std::string(e.what()), 
+               "Error", wxOK | wxICON_ERROR);
+}
+}
+
+bool ChatView::reconnect() {
+try {
+    // Close current connection
+    connection->close(websocket::close_code::normal);
+
+    // Get endpoint info from current connection
+    net::io_context ioContext;
+    tcp::resolver resolver(ioContext);
+
+    std::string serverAddress = connection->next_layer().remote_endpoint().address().to_string();
+    unsigned short serverPort = connection->next_layer().remote_endpoint().port();
+    
+    // Resolve and connect
+    auto endpoints = resolver.resolve(serverAddress, std::to_string(serverPort));
+    
+    tcp::socket socket(ioContext);
+    net::connect(socket, endpoints);
+    
+    // Create new WebSocket
+    auto newConnection = std::make_shared<websocket::stream<tcp::socket>>(std::move(socket));
+    newConnection->set_option(websocket::stream_base::timeout::suggested(beast::role_type::client));
+    
+    // Perform handshake
+    std::string host = serverAddress;
+    std::string target = "/?name=" + currentUser;
+    
+    newConnection->handshake(host, target);
+
+    // Replace old connection with new one
+    connection = newConnection;
+    
+    // Refresh data
+    fetchUserList();
+    
+    return true;
+} catch (const std::exception& e) {
+    std::cerr << "Error reconnecting: " << e.what() << std::endl;
+    return false;
+}
+}
+
+bool ChatView::checkConnection() {
+if (!isConnected()) {
+    bool reconnected = reconnect();
+    if (reconnected) {
+        wxMessageBox("Connection successfully reestablished.", 
+                   "Reconnection", wxOK | wxICON_INFORMATION);
+        return true;
+    } else {
+        wxMessageBox("Could not reestablish connection to server.", 
+                   "Connection Error", wxOK | wxICON_ERROR);
+        return false;
+    }
+}
+return true;
+}
