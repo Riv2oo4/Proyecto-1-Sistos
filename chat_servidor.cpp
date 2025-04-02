@@ -686,8 +686,13 @@ public:
         }
         
         auto response = ProtocolUtils::create_communication_message(sender, content);
+
         
         if (recipient == "~") {  // Public communication
+            if (sender_participant->availability == protocol::Availability::AWAY) {
+                sender_participant->availability = protocol::Availability::AVAILABLE;
+                logger_.record("Participant " + sender + " changed to " + std::to_string(static_cast<int>(sender_participant->availability)) + " after sending a message");     
+            }
             Communication comm(sender, recipient, content);
             repository_.add_public_communication(comm);
             
@@ -700,13 +705,17 @@ public:
                 send_to_participant(sender, error);
                 return;
             }
-            
+            if (sender_participant->availability == protocol::Availability::AWAY) {
+                sender_participant->availability = protocol::Availability::AVAILABLE;
+                logger_.record("Participant " + sender + " changed to " + std::to_string(static_cast<int>(sender_participant->availability)) + " after sending a message");     
+            }
+
             Communication comm(sender, recipient, content);
             repository_.add_private_communication(comm, sender_participant, recipient_participant);
             
             bool delivered = false;
             
-            if (recipient_participant->availability == protocol::Availability::AVAILABLE) {
+            if (recipient_participant->availability == protocol::Availability::AVAILABLE || recipient_participant->availability == protocol::Availability::AWAY) {
                 try {
                     recipient_participant->connection->write(io::buffer(response));
                     delivered = true;
