@@ -791,3 +791,33 @@ std::vector<uint8_t> ChatView::createHistoryRequest(const std::string& chatPartn
     message.insert(message.end(), chatPartner.begin(), chatPartner.end());
     return message;
 }
+void ChatView::handleErrorMessage(const std::vector<uint8_t>& messageData) {
+    if (messageData.size() < 2) return;
+    
+    ServerErrorCode errorCode = static_cast<ServerErrorCode>(messageData[1]);
+    wxString errorMessage;
+    
+    // Translate error code to user-friendly message
+    switch (errorCode) {
+        case ERR_USER_NOT_FOUND:
+            errorMessage = "The requested user does not exist";
+            break;
+        case ERR_INVALID_STATUS:
+            errorMessage = "Invalid user status";
+            break;
+        case ERR_EMPTY_MESSAGE:
+            errorMessage = "Cannot send an empty message";
+            break;
+        case ERR_RECIPIENT_OFFLINE:
+            errorMessage = "Cannot send message to offline user";
+            break;
+        default:
+            errorMessage = "Unknown error";
+            break;
+    }
+    
+    // Display error message in the UI thread
+    wxGetApp().CallAfter([errorMessage]() {
+        wxMessageBox(errorMessage, "Error", wxOK | wxICON_ERROR);
+    });
+}
