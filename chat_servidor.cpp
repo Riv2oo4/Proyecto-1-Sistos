@@ -770,33 +770,35 @@ class ConnectionHandler {
             try {
                 web::flat_buffer buffer;
                 http::request<http::string_body> req;
-                
+
                 http::read(socket_, buffer, req);
-                
+
                 std::string query_string = extract_query_string(req.target());
                 participant_id_ = ProtocolUtils::parse_query_parameter(query_string, "name");
-                
-                
+        
+                logger_.record("Parsed participant ID: [" + participant_id_ + "]");
+        
                 if (participant_id_.empty()) {
                     reject_connection("Empty participant identifier");
                     return;
                 }
-                
+        
                 if (participant_id_ == "~") {
                     reject_connection("Reserved participant identifier");
                     return;
                 }
-                
-                // Check if participant is already connected
-                if (!registry_.register_participant(participant_id_, nullptr, 
-                                                  socket_.remote_endpoint().address())) {
+
+                auto client_address = socket_.remote_endpoint().address();
+
+                if (!registry_.register_participant(participant_id_, nullptr, client_address)) {
                     reject_connection("Participant already connected");
                     return;
                 }
                 auto client_address = socket_.remote_endpoint().address();
+
                 auto ws = std::make_shared<ws::stream<tcp::socket>>(std::move(socket_));
                 ws->set_option(ws::stream_base::timeout::suggested(web::role_type::server));
-                
+        
                 try {
                     ws->accept(req);
                     logger_.record("WebSocket connection accepted for: " + participant_id_);
@@ -807,31 +809,27 @@ class ConnectionHandler {
                     logger_.record("WebSocket handshake failed for " + participant_id_ + ": " + e.what());
                     return;
                 }
-                
-                // Update registry with WebSocket connection
+        
+                logger_.record("Intentando registrar a " + participant_id_);
+                logger_.record("ws es nulo? " + std::string(ws == nullptr ? "sí" : "no"));
+
                 registry_.register_participant(participant_id_, ws, client_address);
-                
-                // Notify all participants about new connection
-                auto notification_join = ProtocolUtils::create_new_participant_notification(participant_id_);
-                registry_.broadcast(notification_join);
-                
-                // Handle messages
+        
+                auto notification = ProtocolUtils::create_new_participant_notification(participant_id_);
+                registry_.broadcast(notification);
                 web::flat_buffer msg_buffer;
-                
+        
                 while (true) {
                     try {
                         ws->read(msg_buffer);
-                        
                         auto data = web::buffers_to_string(msg_buffer.data());
                         std::vector<uint8_t> binary_data(data.begin(), data.end());
                         msg_buffer.consume(msg_buffer.size());
-                        
-                        if (binary_data.empty()) {
-                            continue;
+        
+                        if (!binary_data.empty()) {
+                            handle_client_message(binary_data);
                         }
-                        
-                        handle_client_message(binary_data);
-                        
+        
                     } catch (const web::error_code& ec) {
                         if (ec == ws::error::closed) {
                             logger_.record("Connection closed by participant: " + participant_id_);
@@ -845,21 +843,19 @@ class ConnectionHandler {
                         break;
                     }
                 }
-                
-                // Set participant as offline
+        
                 registry_.set_availability(participant_id_, protocol::Availability::OFFLINE);
                 logger_.record("Participant " + participant_id_ + " marked as OFFLINE");
-                
-                // Notify all other participants
+        
                 auto notification_offline = ProtocolUtils::create_availability_update(
                     participant_id_, protocol::Availability::OFFLINE);
                 registry_.broadcast(notification_offline);
-                
+        
             } catch (const std::exception& e) {
                 logger_.record("Connection handling error: " + std::string(e.what()));
             }
-        }
-        
+        }            
+
     private:
         void reject_connection(const std::string& reason) {
             http::response<http::string_body> res{http::status::bad_request, 11};
