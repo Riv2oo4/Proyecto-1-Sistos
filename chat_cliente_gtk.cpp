@@ -81,4 +81,79 @@ class Contact {
             }
             return wxString(statusIndicator + username);
         }
-    };
+};
+
+class ChatView;
+class LoginView;
+class MessengerApp;
+
+
+class MessengerApp : public wxApp {
+public:
+    virtual bool OnInit() override;
+};
+
+wxIMPLEMENT_APP(MessengerApp);
+
+
+class ChatView : public wxFrame {
+public:
+    ChatView(std::shared_ptr<websocket::stream<tcp::socket>> connection, const std::string& username);
+    ~ChatView();
+
+private:
+
+    wxListBox* contactListBox;
+    wxTextCtrl* chatHistoryDisplay;
+    wxTextCtrl* messageInputField;
+    wxButton* sendMessageButton;
+    wxButton* addContactButton;
+    wxButton* userInfoButton;
+    wxButton* refreshButton;
+    wxChoice* statusSelector;
+    wxStaticText* chatTitleLabel;
+    wxStaticText* statusDisplayLabel;
+    
+ 
+    std::shared_ptr<websocket::stream<tcp::socket>> connection;
+    std::string currentUser;
+    std::string activeChatPartner;
+    bool isRunning;
+    std::mutex chatDataMutex;
+    UserStatus userCurrentStatus;
+
+    std::unordered_map<std::string, Contact> contactDirectory;
+    std::unordered_map<std::string, std::vector<std::string>> messageHistory;
+    
+    void onSendMessage(wxCommandEvent& event);
+    void onAddContact(wxCommandEvent& event);
+    void onContactSelected(wxCommandEvent& event);
+    void onRequestUserInfo(wxCommandEvent& event);
+    void onRefreshContacts(wxCommandEvent& event);
+    void onStatusChanged(wxCommandEvent& event);
+    
+    void fetchUserList();
+    void fetchChatHistory();
+    void startMessageListener();
+    bool checkConnection();
+    bool reconnect();
+    
+    std::vector<uint8_t> createUserListRequest();
+    std::vector<uint8_t> createUserInfoRequest(const std::string& username);
+    std::vector<uint8_t> createStatusUpdateRequest(UserStatus newStatus);
+    std::vector<uint8_t> createSendMessageRequest(const std::string& recipient, const std::string& message);
+    std::vector<uint8_t> createHistoryRequest(const std::string& chatPartner);
+    
+    void handleErrorMessage(const std::vector<uint8_t>& messageData);
+    void handleUserListMessage(const std::vector<uint8_t>& messageData);
+    void handleUserInfoMessage(const std::vector<uint8_t>& messageData);
+    void handleNewUserMessage(const std::vector<uint8_t>& messageData);
+    void handleStatusChangeMessage(const std::vector<uint8_t>& messageData);
+    void handleChatMessage(const std::vector<uint8_t>& messageData);
+    void handleChatHistoryMessage(const std::vector<uint8_t>& messageData);
+    
+    void updateContactList();
+    void updateStatusDisplay();
+    bool canSendMessages() const;
+    bool isConnected();
+};
