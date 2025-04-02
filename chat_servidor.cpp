@@ -784,6 +784,9 @@ class ConnectionHandler {
                 try {
                     ws->accept(req);
                     logger_.record("WebSocket connection accepted for: " + participant_id_);
+                    logger_.record("Nuevo cliente conectando desde IP: " + 
+                        socket_.remote_endpoint().address().to_string() + 
+                        " con ID: " + participant_id_);         
                 } catch (const std::exception& e) {
                     logger_.record("WebSocket handshake failed for " + participant_id_ + ": " + e.what());
                     return;
@@ -925,7 +928,7 @@ public:
     }
     
     void run() {
-        logger_.record("System starting...");
+        logger_.record("System Running...");
         
         while (true) {
             tcp::socket socket{io_context_};
