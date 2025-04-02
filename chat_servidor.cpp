@@ -788,8 +788,6 @@ class ConnectionHandler {
                     return;
                 }
 
-                auto client_address = socket_.remote_endpoint().address();
-
                 if (!registry_.register_participant(participant_id_, nullptr, client_address)) {
                     reject_connection("Participant already connected");
                     return;
