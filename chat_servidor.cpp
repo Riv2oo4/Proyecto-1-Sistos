@@ -761,6 +761,7 @@ class ConnectionHandler {
                 std::string query_string = extract_query_string(req.target());
                 participant_id_ = ProtocolUtils::parse_query_parameter(query_string, "name");
                 
+                
                 if (participant_id_.empty()) {
                     reject_connection("Empty participant identifier");
                     return;
@@ -777,7 +778,7 @@ class ConnectionHandler {
                     reject_connection("Participant already connected");
                     return;
                 }
-                
+                auto client_address = socket_.remote_endpoint().address();
                 auto ws = std::make_shared<ws::stream<tcp::socket>>(std::move(socket_));
                 ws->set_option(ws::stream_base::timeout::suggested(web::role_type::server));
                 
@@ -793,7 +794,7 @@ class ConnectionHandler {
                 }
                 
                 // Update registry with WebSocket connection
-                registry_.register_participant(participant_id_, ws, ws->next_layer().remote_endpoint().address());
+                registry_.register_participant(participant_id_, ws, client_address);
                 
                 // Notify all participants about new connection
                 auto notification_join = ProtocolUtils::create_new_participant_notification(participant_id_);
