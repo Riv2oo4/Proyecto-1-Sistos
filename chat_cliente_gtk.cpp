@@ -157,3 +157,147 @@ private:
     bool canSendMessages() const;
     bool isConnected();
 };
+
+
+class LoginView : public wxFrame {
+    public:
+        LoginView();
+    
+    private:
+        wxTextCtrl* usernameField;
+        wxTextCtrl* serverAddressField;
+        wxTextCtrl* serverPortField;
+        wxStaticText* connectionStatusLabel;
+    
+        void onConnectButtonClicked(wxCommandEvent& event);
+    };
+    
+    bool MessengerApp::OnInit() {
+        LoginView* loginScreen = new LoginView();
+        loginScreen->Show(true);
+        return true;
+    }
+    
+    LoginView::LoginView() 
+        : wxFrame(nullptr, wxID_ANY, "Messenger Login", wxDefaultPosition, wxSize(400, 250)) {
+        
+        wxPanel* mainPanel = new wxPanel(this);
+        wxBoxSizer* mainLayout = new wxBoxSizer(wxVERTICAL);
+        
+        wxBoxSizer* usernameLayout = new wxBoxSizer(wxHORIZONTAL);
+        usernameLayout->Add(new wxStaticText(mainPanel, wxID_ANY, "Username:"), 
+                           0, wxALL | wxALIGN_CENTER_VERTICAL, 10);
+        usernameField = new wxTextCtrl(mainPanel, wxID_ANY);
+        usernameLayout->Add(usernameField, 1, wxALL, 10);
+        mainLayout->Add(usernameLayout, 0, wxEXPAND);
+    
+        wxBoxSizer* addressLayout = new wxBoxSizer(wxHORIZONTAL);
+        addressLayout->Add(new wxStaticText(mainPanel, wxID_ANY, "Server Address:"), 
+                         0, wxALL | wxALIGN_CENTER_VERTICAL, 10);
+        serverAddressField = new wxTextCtrl(mainPanel, wxID_ANY, "3.13.27.172");
+        addressLayout->Add(serverAddressField, 1, wxALL, 10);
+        mainLayout->Add(addressLayout, 0, wxEXPAND);
+    
+        wxBoxSizer* portLayout = new wxBoxSizer(wxHORIZONTAL);
+        portLayout->Add(new wxStaticText(mainPanel, wxID_ANY, "Server Port:"), 
+                      0, wxALL | wxALIGN_CENTER_VERTICAL, 10);
+        serverPortField = new wxTextCtrl(mainPanel, wxID_ANY, "3000");
+        portLayout->Add(serverPortField, 1, wxALL, 10);
+        mainLayout->Add(portLayout, 0, wxEXPAND);
+    
+        wxButton* connectButton = new wxButton(mainPanel, wxID_ANY, "Connect");
+        mainLayout->Add(connectButton, 0, wxALL | wxCENTER, 10);
+    
+        connectionStatusLabel = new wxStaticText(mainPanel, wxID_ANY, "", 
+                                              wxDefaultPosition, wxDefaultSize, wxALIGN_CENTRE_HORIZONTAL);
+        connectionStatusLabel->SetForegroundColour(wxColour(255, 0, 0));
+        mainLayout->Add(connectionStatusLabel, 0, wxALL | wxEXPAND, 10);
+    
+        connectButton->Bind(wxEVT_BUTTON, &LoginView::onConnectButtonClicked, this);
+        
+        mainPanel->SetSizer(mainLayout);
+    }
+    
+    void LoginView::onConnectButtonClicked(wxCommandEvent&) {
+        std::string username = usernameField->GetValue().ToStdString();
+        std::string serverAddress = serverAddressField->GetValue().ToStdString();
+        std::string serverPort = serverPortField->GetValue().ToStdString();
+        
+        if (username.empty()) {
+            connectionStatusLabel->SetLabel("Error: Username cannot be empty");
+            return;
+        }
+        
+        if (username == "~") {
+            connectionStatusLabel->SetLabel("Error: '~' is reserved for general chat");
+            return;
+        }
+        
+        if (serverAddress.empty()) {
+            connectionStatusLabel->SetLabel("Error: Server address cannot be empty");
+            return;
+        }
+        
+        if (serverPort.empty()) {
+            connectionStatusLabel->SetLabel("Error: Server port cannot be empty");
+            return;
+        }
+        
+        connectionStatusLabel->SetLabel("Connecting...");
+    
+        std::thread([this, username, serverAddress, serverPort]() {
+            try {
+                std::cout << "Connecting to " << serverAddress << ":" << serverPort << std::endl;
+    
+                net::io_context ioContext;
+                tcp::resolver resolver(ioContext);
+                auto endpoints = resolver.resolve(serverAddress, serverPort);
+                
+                std::cout << "Address resolved, connecting TCP socket..." << std::endl;
+        
+                tcp::socket socket(ioContext);
+                net::connect(socket, endpoints);
+                
+                std::cout << "TCP socket connected, creating WebSocket stream..." << std::endl;
+    
+                auto wsConnection = std::make_shared<websocket::stream<tcp::socket>>(std::move(socket));
+                wsConnection->set_option(websocket::stream_base::timeout::suggested(beast::role_type::client));
+    
+                std::string host = serverAddress;
+                std::string target = "/?name=" + username;
+                
+                std::cout << "Starting WebSocket handshake with host=" << host 
+                         << " and target=" << target << std::endl;
+        
+                wsConnection->handshake(host, target);
+                std::cout << "WebSocket handshake successful!" << std::endl;
+        
+                wxGetApp().CallAfter([this, wsConnection, username]() {
+                    ChatView* chatWindow = new ChatView(wsConnection, username);
+                    chatWindow->Show(true);
+                    Close();
+                });
+            } 
+            catch (const beast::error_code& ec) {
+                wxGetApp().CallAfter([this, ec]() {
+                    std::string errorMsg = "Connection error: " + ec.message();
+                    connectionStatusLabel->SetLabel("Error: " + errorMsg);
+                    std::cerr << errorMsg << std::endl;
+                });
+            }
+            catch (const std::exception& e) {
+                wxGetApp().CallAfter([this, e]() {
+                    std::string errorMsg = e.what();
+                    connectionStatusLabel->SetLabel("Error: " + errorMsg);
+                    std::cerr << "Exception: " << errorMsg << std::endl;
+                });
+            }
+            catch (...) {
+                wxGetApp().CallAfter([this]() {
+                    connectionStatusLabel->SetLabel("Error: Unknown exception during connection");
+                    std::cerr << "Unknown error during connection" << std::endl;
+                });
+            }
+        }).detach();
+    }
+    
