@@ -132,6 +132,7 @@ public:
     protocol::Availability availability;
     std::shared_ptr<ws::stream<tcp::socket>> connection;
     std::deque<Communication> personal_history;
+    std::deque<std::vector<uint8_t>> mensajes_pendientes;
     std::chrono::system_clock::time_point last_activity;
     io::ip::address network_address;
     
@@ -148,9 +149,9 @@ public:
     }
     
     bool can_receive_communications() const {
-        return availability != protocol::Availability::OFFLINE && 
-               availability != protocol::Availability::BUSY;
+        return availability != protocol::Availability::OFFLINE;
     }
+    
     
     void update_last_activity() {
         last_activity = std::chrono::system_clock::now();
@@ -622,6 +623,25 @@ public:
         }
         
         registry_.set_availability(target_id, static_cast<protocol::Availability>(status));
+
+        // Si el usuario pasó a estado ACTIVO, entregarle los mensajes pendientes
+        if (status == protocol::Availability::AVAILABLE) {
+            auto participant = registry_.get_participant(target_id);
+            if (participant && participant->connection) {
+                while (!participant->mensajes_pendientes.empty()) {
+                    try {
+                        auto& msg = participant->mensajes_pendientes.front();
+                        participant->connection->write(boost::asio::buffer(msg));
+                        participant->mensajes_pendientes.pop_front();
+                        logger_.record("Mensaje pendiente entregado a " + target_id);
+                    } catch (const std::exception& e) {
+                        logger_.record("Error al enviar mensaje pendiente a " + target_id + ": " + e.what());
+                        break;
+                    }
+                }
+            }
+        }
+
         
         auto notification = ProtocolUtils::create_availability_update(target_id, static_cast<protocol::Availability>(status));
         registry_.broadcast(notification);
@@ -686,21 +706,33 @@ public:
             
             bool delivered = false;
             
-            if (recipient_participant->can_receive_communications()) {
+            if (recipient_participant->availability == protocol::Availability::AVAILABLE) {
                 try {
                     recipient_participant->connection->write(io::buffer(response));
                     delivered = true;
+            
+                    sender_participant->connection->write(io::buffer(response));
                 } catch (const std::exception& e) {
                     logger_.record("Failed to deliver communication to " + recipient + ": " + e.what());
                 }
-            }
+            } else if (recipient_participant->availability == protocol::Availability::BUSY) {
+                recipient_participant->mensajes_pendientes.push_back(response);
+                logger_.record("Mensaje para " + recipient + " guardado en cola por estar OCUPADO");
             
-            // Always send confirmation to sender
-            try {
-                sender_participant->connection->write(io::buffer(response));
-            } catch (const std::exception& e) {
-                logger_.record("Failed to send confirmation to " + sender + ": " + e.what());
+                try {
+                    sender_participant->connection->write(io::buffer(response)); // confirmación al emisor
+                } catch (const std::exception& e) {
+                    logger_.record("Failed to send confirmation to " + sender + ": " + e.what());
+                }
+            } else {
+                auto error = ProtocolUtils::create_error_response(protocol::FailureReason::PARTICIPANT_UNAVAILABLE);
+                try {
+                    sender_participant->connection->write(io::buffer(error));
+                } catch (const std::exception& e) {
+                    logger_.record("Failed to send error to " + sender + ": " + e.what());
+                }
             }
+                     
             
             logger_.record("Communication from " + sender + " to " + recipient + 
                           (delivered ? " delivered" : " not delivered (recipient busy or away)"));
