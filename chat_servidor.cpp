@@ -370,6 +370,16 @@ public:
             }
         }
     }
+    void update_connection(const std::string& id, std::shared_ptr<ws::stream<tcp::socket>> connection) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = participants_.find(id);
+        if (it != participants_.end()) {
+            it->second->connection = connection;
+            it->second->availability = protocol::Availability::AVAILABLE;
+            it->second->update_last_activity();
+        }
+    }
+    
     
 };
 
@@ -801,6 +811,7 @@ class ConnectionHandler {
                 try {
                     ws->accept(req);
                     logger_.record("WebSocket connection accepted for: " + participant_id_);
+                    registry_.update_connection(participant_id_, ws);
                 } catch (const std::exception& e) {
                     logger_.record("WebSocket handshake failed for " + participant_id_ + ": " + e.what());
                     return;
