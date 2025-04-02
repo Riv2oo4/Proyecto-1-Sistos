@@ -770,9 +770,9 @@ class ConnectionHandler {
             try {
                 web::flat_buffer buffer;
                 http::request<http::string_body> req;
-
+        
                 http::read(socket_, buffer, req);
-
+        
                 std::string query_string = extract_query_string(req.target());
                 participant_id_ = ProtocolUtils::parse_query_parameter(query_string, "name");
         
@@ -787,22 +787,20 @@ class ConnectionHandler {
                     reject_connection("Reserved participant identifier");
                     return;
                 }
-
+        
+                auto client_address = socket_.remote_endpoint().address();
+        
                 if (!registry_.register_participant(participant_id_, nullptr, client_address)) {
                     reject_connection("Participant already connected");
                     return;
                 }
-                auto client_address = socket_.remote_endpoint().address();
-
+        
                 auto ws = std::make_shared<ws::stream<tcp::socket>>(std::move(socket_));
                 ws->set_option(ws::stream_base::timeout::suggested(web::role_type::server));
         
                 try {
                     ws->accept(req);
                     logger_.record("WebSocket connection accepted for: " + participant_id_);
-                    logger_.record("Nuevo cliente conectando desde IP: " + 
-                        socket_.remote_endpoint().address().to_string() + 
-                        " con ID: " + participant_id_);         
                 } catch (const std::exception& e) {
                     logger_.record("WebSocket handshake failed for " + participant_id_ + ": " + e.what());
                     return;
@@ -815,6 +813,7 @@ class ConnectionHandler {
         
                 auto notification = ProtocolUtils::create_new_participant_notification(participant_id_);
                 registry_.broadcast(notification);
+        
                 web::flat_buffer msg_buffer;
         
                 while (true) {
