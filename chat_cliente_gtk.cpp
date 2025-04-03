@@ -762,3 +762,131 @@ void VistaChat::obtenerHistorialChat() {
 bool VistaChat::puedeEnviarMensajes() const {
     return estadoActualUsuario == EstadoUsuario::ACTIVO || estadoActualUsuario == EstadoUsuario::INACTIVO;
 }
+
+bool VistaChat::estaConectado() {
+    if (!conexion) return false;
+    
+    try {
+        return conexion->is_open() && conexion->next_layer().is_open();
+    } catch (...) {
+        return false;
+    }
+}
+
+void VistaChat::alEnviarMensaje(wxCommandEvent&) {
+    if (contactoActivo.empty()) {
+        wxMessageBox("Por favor seleccione un contacto primero", "Aviso", wxOK | wxICON_INFORMATION);
+        return;
+    }
+    
+    if (!puedeEnviarMensajes()) {
+        wxMessageBox("No puede enviar mensajes mientras está OCUPADO o DESCONECTADO",
+                   "Aviso", wxOK | wxICON_WARNING);
+        return;
+    }
+
+    if (!verificarConexion()) {
+        return;  
+    }
+
+    std::string textoMensaje = campoEntradaMensaje->GetValue().ToStdString();
+    if (textoMensaje.empty()) return;
+
+    try {
+        std::vector<uint8_t> datosMensaje = crearSolicitudEnvioMensaje(contactoActivo, textoMensaje);
+        if (datosMensaje.empty()) return; 
+
+        try {
+            conexion->write(red::buffer(datosMensaje));
+            if (estadoActualUsuario == EstadoUsuario::INACTIVO) {
+                estadoActualUsuario = EstadoUsuario::ACTIVO;
+                actualizarVistaEstado();
+                selectorEstado->SetSelection(0); 
+            }
+            campoEntradaMensaje->Clear();
+        } catch (const std::exception& e) {
+            if (reconectar()) {
+                try {
+                    conexion->write(red::buffer(datosMensaje));
+                    campoEntradaMensaje->Clear();
+                    wxMessageBox("Mensaje enviado después de reconectar", "Reconexión Exitosa", wxOK | wxICON_INFORMATION);
+                } catch (const std::exception& e2) {
+                    wxMessageBox("No se pudo enviar el mensaje después de reconectar: " + std::string(e2.what()),
+                               "Error", wxOK | wxICON_ERROR);
+                }
+            } else {
+                wxMessageBox("Error al enviar mensaje: " + std::string(e.what()),
+                           "Error", wxOK | wxICON_ERROR);
+            }
+        }
+    } catch (const std::exception& e) {
+        wxMessageBox("Error al preparar mensaje: " + std::string(e.what()),
+                   "Error", wxOK | wxICON_ERROR);
+    }
+}
+
+void VistaChat::iniciarEscuchaMensajes() {
+    std::thread([this]() {
+        try {
+            while (estaEjecutando) {
+                bestia::flat_buffer buffer;
+                conexion->read(buffer);
+                
+                // Convertir datos recibidos a vector
+                std::string datosStr = bestia::buffers_to_string(buffer.data());
+                std::vector<uint8_t> mensaje(datosStr.begin(), datosStr.end());
+                
+                if (!mensaje.empty()) {
+                    uint8_t tipoMensaje = mensaje[0];
+                    
+                    // Procesar mensaje según tipo
+                    switch (tipoMensaje) {
+                        case MSG_SERVIDOR_ERROR:
+                            manejarMensajeError(mensaje);
+                            break;
+                        case MSG_SERVIDOR_LISTA_USUARIOS:
+                            manejarMensajeListaUsuarios(mensaje);
+                            break;
+                        case MSG_SERVIDOR_INFO_USUARIO:
+                            manejarMensajeInfoUsuario(mensaje);
+                            break;
+                        case MSG_SERVIDOR_USUARIO_CONECTADO:
+                            manejarMensajeNuevoUsuario(mensaje);
+                            break;
+                        case MSG_SERVIDOR_CAMBIO_ESTADO:
+                            manejarMensajeCambioEstado(mensaje);
+                            break;
+                        case MSG_SERVIDOR_NUEVO_MENSAJE:
+                            manejarMensajeChat(mensaje);
+                            break;
+                        case MSG_SERVIDOR_HISTORIAL_CHAT:
+                            manejarMensajeHistorialChat(mensaje);
+                            break;
+                        default:
+                            // Tipo de mensaje desconocido
+                            break;
+                    }
+                }
+            }
+        } catch (const bestia::error_code& ec) {
+            if (ec == websocket::error::closed) {
+                wxGetApp().CallAfter([this]() {
+                    wxMessageBox("Conexión cerrada por el servidor", "Aviso", wxOK | wxICON_INFORMATION);
+                    Close();
+                });
+            } else {
+                wxGetApp().CallAfter([this, ec]() {
+                    wxMessageBox("Error de conexión: " + ec.message(),
+                               "Error", wxOK | wxICON_ERROR);
+                    Close();
+                });
+            }
+        } catch (const std::exception& e) {
+            wxGetApp().CallAfter([this, e]() {
+                wxMessageBox("Error de conexión: " + std::string(e.what()),
+                           "Error", wxOK | wxICON_ERROR);
+                Close();
+            });
+        }
+    }).detach();
+}
