@@ -566,3 +566,37 @@ VistaChat::VistaChat(std::shared_ptr<websocket::stream<tcp::socket>> conexion, c
     // Centrar la ventana en la pantalla
     Centre();
 }
+
+void VistaChat::actualizarVistaEstado() {
+    wxString textoEstado;
+    wxColour colorEstado;
+    
+    switch (estadoActualUsuario) {
+        case EstadoUsuario::ACTIVO:
+            textoEstado = "ACTIVO";
+            colorEstado = wxColour(50, 205, 50);  // Verde claro para modo oscuro
+            break;
+        case EstadoUsuario::OCUPADO:
+            textoEstado = "OCUPADO";
+            colorEstado = wxColour(255, 99, 71);  // Rojo tomate para modo oscuro
+            break;
+        case EstadoUsuario::INACTIVO:
+            textoEstado = "INACTIVO";
+            colorEstado = wxColour(255, 215, 0);  // Oro para modo oscuro
+            break;
+        case EstadoUsuario::DESCONECTADO:
+            textoEstado = "DESCONECTADO";
+            colorEstado = wxColour(169, 169, 169);  // Gris oscuro para modo oscuro
+            break;
+    }
+    
+    etiquetaEstado->SetLabel("Estado actual: " + textoEstado);
+    etiquetaEstado->SetForegroundColour(colorEstado);
+    
+    auto it = directorioContactos.find(usuarioActual);
+    if (it != directorioContactos.end()) {
+        it->second.establecerEstado(estadoActualUsuario);
+    }
+    
+    actualizarListaContactos();
+}
