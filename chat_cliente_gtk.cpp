@@ -1347,3 +1347,76 @@ void VistaChat::manejarMensajeChat(const std::vector<uint8_t>& datosMensaje) {
     }
 }
 
+
+void VistaChat::manejarMensajeHistorialChat(const std::vector<uint8_t>& datosMensaje) {
+    if (datosMensaje.size() < 2) return;
+    
+    uint8_t cantidadMensajes = datosMensaje[1];
+    size_t desplazamiento = 2;
+    
+    std::vector<std::string> mensajes;
+    
+    // Procesar el historial
+    for (uint8_t i = 0; i < cantidadMensajes; i++) {
+        if (desplazamiento >= datosMensaje.size()) break;
+        
+        uint8_t longitudNombreUsuario = datosMensaje[desplazamiento++];
+        if (desplazamiento + longitudNombreUsuario > datosMensaje.size()) break;
+        std::string nombreUsuario(datosMensaje.begin() + desplazamiento, 
+                                datosMensaje.begin() + desplazamiento + longitudNombreUsuario);
+        desplazamiento += longitudNombreUsuario;
+        
+        if (desplazamiento >= datosMensaje.size()) break;
+        uint8_t longitudMensaje = datosMensaje[desplazamiento++];
+        if (desplazamiento + longitudMensaje > datosMensaje.size()) break;
+        std::string contenidoMensaje(datosMensaje.begin() + desplazamiento, 
+                                  datosMensaje.begin() + desplazamiento + longitudMensaje);
+        desplazamiento += longitudMensaje;
+
+        std::string mensajeFormateado = nombreUsuario + ": " + contenidoMensaje;
+        mensajes.push_back(mensajeFormateado);
+    }
+    
+    // Actualizar historial 
+    {
+        std::lock_guard<std::mutex> bloqueo(mutexDatosChat);
+        historialMensajes[contactoActivo] = mensajes;
+    }
+    
+    wxGetApp().CallAfter([this, mensajes]() {
+        panelHistorialChat->Clear();
+        for (const auto& msg : mensajes) {
+            panelHistorialChat->AppendText(msg + "\n");
+        }
+    });
+}
+
+void VistaChat::actualizarListaContactos() {
+    int seleccionActual = listaContactos->GetSelection();
+    wxString elementoActual = (seleccionActual != wxNOT_FOUND) ? 
+                         listaContactos->GetString(seleccionActual) : wxString();
+
+    // Lista de contactos
+    listaContactos->Clear();
+
+    for (const auto& [nombre, contacto] : directorioContactos) {
+        if (nombre == usuarioActual) continue;
+
+        listaContactos->Append(contacto.obtenerNombreFormateado());
+    }
+    if (!elementoActual.IsEmpty()) {
+        int pos = listaContactos->FindString(elementoActual);
+        if (pos != wxNOT_FOUND) {
+            listaContactos->SetSelection(pos);
+        } else {
+            wxString nombreContacto = elementoActual.AfterFirst(']').Trim(true).Trim(false);
+            for (unsigned int i = 0; i < listaContactos->GetCount(); i++) {
+                if (listaContactos->GetString(i).AfterFirst(']').Trim(true).Trim(false) == nombreContacto) {
+                    listaContactos->SetSelection(i);
+                    break;
+                }
+            }
+        }
+    }
+}
+
