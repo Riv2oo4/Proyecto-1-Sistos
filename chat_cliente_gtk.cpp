@@ -1047,3 +1047,44 @@ std::vector<uint8_t> VistaChat::crearSolicitudInfoUsuario(const std::string& nom
     
     return mensaje;
 }
+
+std::vector<uint8_t> VistaChat::crearSolicitudActualizacionEstado(EstadoUsuario nuevoEstado) {
+    std::vector<uint8_t> mensaje = {
+        MSG_CLIENTE_ACTUALIZAR_ESTADO, 
+        static_cast<uint8_t>(usuarioActual.size())
+    };
+    mensaje.insert(mensaje.end(), usuarioActual.begin(), usuarioActual.end());
+    mensaje.push_back(static_cast<uint8_t>(nuevoEstado));
+    return mensaje;
+}
+
+std::vector<uint8_t> VistaChat::crearSolicitudEnvioMensaje(const std::string& destinatario, const std::string& mensaje) {
+    // Verificar límite de longitud del mensaje
+    if (mensaje.size() > 255) {
+        wxMessageBox("El mensaje es demasiado largo (máximo 255 caracteres)", 
+                    "Aviso", wxOK | wxICON_WARNING);
+        return {};
+    }
+    
+    try {
+        // Construir paquete de protocolo del mensaje
+        std::vector<uint8_t> datos = {
+            MSG_CLIENTE_ENVIAR_MENSAJE, 
+            static_cast<uint8_t>(destinatario.size())
+        };
+        datos.insert(datos.end(), destinatario.begin(), destinatario.end());
+        datos.push_back(static_cast<uint8_t>(mensaje.size()));
+        datos.insert(datos.end(), mensaje.begin(), mensaje.end());
+        return datos;
+    } catch (const std::exception& e) {
+        wxMessageBox("Error al crear mensaje: " + std::string(e.what()), 
+                   "Error", wxOK | wxICON_ERROR);
+        return {};
+    }
+}
+
+std::vector<uint8_t> VistaChat::crearSolicitudHistorial(const std::string& contactoChat) {
+    std::vector<uint8_t> mensaje = {MSG_CLIENTE_SOLICITAR_HISTORIAL, static_cast<uint8_t>(contactoChat.size())};
+    mensaje.insert(mensaje.end(), contactoChat.begin(), contactoChat.end());
+    return mensaje;
+}
