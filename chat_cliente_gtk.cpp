@@ -972,3 +972,60 @@ void VistaChat::alCambiarEstado(wxCommandEvent&) {
                    "Error", wxOK | wxICON_ERROR);
     }
 }
+
+bool VistaChat::reconectar() {
+    try {
+        // Cerrar conexión actual
+        conexion->close(websocket::close_code::normal);
+
+        // Obtener información del punto final de la conexión actual
+        red::io_context contextoIO;
+        tcp::resolver resolvedor(contextoIO);
+
+        std::string direccionServidor = conexion->next_layer().remote_endpoint().address().to_string();
+        unsigned short puertoServidor = conexion->next_layer().remote_endpoint().port();
+        
+        // Resolver y conectar
+        auto puntosFinal = resolvedor.resolve(direccionServidor, std::to_string(puertoServidor));
+        
+        tcp::socket socket(contextoIO);
+        red::connect(socket, puntosFinal);
+        
+        // Crear nuevo WebSocket
+        auto nuevaConexion = std::make_shared<websocket::stream<tcp::socket>>(std::move(socket));
+        nuevaConexion->set_option(websocket::stream_base::timeout::suggested(bestia::role_type::client));
+        
+        // Realizar handshake
+        std::string anfitrion = direccionServidor;
+        std::string objetivo = "/?name=" + usuarioActual;
+        
+        nuevaConexion->handshake(anfitrion, objetivo);
+
+        // Reemplazar conexión antigua con la nueva
+        conexion = nuevaConexion;
+        
+        // Actualizar datos
+        obtenerListaUsuarios();
+        
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error al reconectar: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool VistaChat::verificarConexion() {
+    if (!estaConectado()) {
+        bool reconectado = reconectar();
+        if (reconectado) {
+            wxMessageBox("Conexión restablecida correctamente.", 
+                       "Reconexión", wxOK | wxICON_INFORMATION);
+            return true;
+        } else {
+            wxMessageBox("No se pudo restablecer la conexión con el servidor.", 
+                       "Error de Conexión", wxOK | wxICON_ERROR);
+            return false;
+        }
+    }
+    return true;
+}
