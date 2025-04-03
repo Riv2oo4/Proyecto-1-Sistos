@@ -1245,3 +1245,105 @@ void VistaChat::manejarMensajeNuevoUsuario(const std::vector<uint8_t>& datosMens
     });
 }
 
+
+void VistaChat::manejarMensajeCambioEstado(const std::vector<uint8_t>& datosMensaje) {
+    if (datosMensaje.size() < 2) return;
+    
+    uint8_t longitudNombreUsuario = datosMensaje[1];
+    if (2 + longitudNombreUsuario > datosMensaje.size()) return;
+    std::string nombreUsuario(datosMensaje.begin() + 2, datosMensaje.begin() + 2 + longitudNombreUsuario);
+    
+    if (2 + longitudNombreUsuario + 1 > datosMensaje.size()) return;
+    EstadoUsuario estado = static_cast<EstadoUsuario>(datosMensaje[2 + longitudNombreUsuario]);
+
+    std::cout << "Actualización recibida: Usuario " << nombreUsuario << " ahora está " << obtenerNombreEstado(estado) << std::endl;
+    auto it = directorioContactos.find(nombreUsuario);
+    if (it != directorioContactos.end()) {
+        it->second.establecerEstado(estado);
+    } else {
+        directorioContactos.emplace(nombreUsuario, Contacto(nombreUsuario, estado));
+    }
+
+    if (nombreUsuario == usuarioActual) {
+        estadoActualUsuario = estado;
+    }
+    
+    wxGetApp().CallAfter([this, nombreUsuario, estado]() {
+        actualizarListaContactos();
+
+        // Si el cambio de estado es para el usuario actual
+        if (nombreUsuario == usuarioActual) {
+            // Actualizar selector de estado
+            switch (estado) {
+                case EstadoUsuario::ACTIVO:
+                    selectorEstado->SetSelection(0);
+                    break;
+                case EstadoUsuario::OCUPADO:
+                    selectorEstado->SetSelection(1);
+                    break;
+                case EstadoUsuario::INACTIVO:
+                    selectorEstado->SetSelection(2);
+                    break;
+                default:
+                    break;
+            }
+            actualizarVistaEstado();
+
+            wxString textoEstado;
+            switch (estado) {
+                case EstadoUsuario::ACTIVO:
+                    textoEstado = "ACTIVO";
+                    break;
+                case EstadoUsuario::OCUPADO:
+                    textoEstado = "OCUPADO";
+                    break;
+                case EstadoUsuario::INACTIVO:
+                    textoEstado = "INACTIVO";
+                    break;
+                default:
+                    textoEstado = "DESCONOCIDO";
+                    break;
+            }
+            wxMessageBox("Tu estado ha cambiado a: " + textoEstado, "Cambio de Estado", wxOK | wxICON_INFORMATION);
+        }
+    });
+}
+
+void VistaChat::manejarMensajeChat(const std::vector<uint8_t>& datosMensaje) {
+    if (datosMensaje.size() < 2) return;
+    
+    // Usuario remitente
+    uint8_t longitudRemitente = datosMensaje[1];
+    if (2 + longitudRemitente > datosMensaje.size()) return;
+    std::string remitente(datosMensaje.begin() + 2, datosMensaje.begin() + 2 + longitudRemitente);
+    
+    // Contenido del mensaje
+    if (2 + longitudRemitente + 1 > datosMensaje.size()) return;
+    uint8_t longitudMensaje = datosMensaje[2 + longitudRemitente];
+    if (3 + longitudRemitente + longitudMensaje > datosMensaje.size()) return;
+    std::string contenidoMensaje(datosMensaje.begin() + 3 + longitudRemitente, 
+                            datosMensaje.begin() + 3 + longitudRemitente + longitudMensaje);
+
+    std::string mensajeFormateado = remitente + ": " + contenidoMensaje;
+    
+    // historial
+    {
+        std::lock_guard<std::mutex> bloqueo(mutexDatosChat);
+
+        std::string claveChat;
+        if (remitente == usuarioActual) {
+            claveChat = contactoActivo;
+        } else {
+            claveChat = (contactoActivo == "~") ? "~" : remitente;
+        }
+        
+        historialMensajes[claveChat].push_back(mensajeFormateado);
+    }
+
+    if (contactoActivo == "~" || remitente == contactoActivo || remitente == usuarioActual) {
+        wxGetApp().CallAfter([this, mensajeFormateado]() {
+            panelHistorialChat->AppendText(mensajeFormateado + "\n");
+        });
+    }
+}
+
