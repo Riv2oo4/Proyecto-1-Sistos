@@ -386,20 +386,17 @@ class VistaLogin : public wxFrame {
         
         // Manejador para el botón Cancelar
         void alHacerClicEnCancelar(wxCommandEvent& evento) {
-            // Cierra la aplicación
             Close(true);
         }
     };
 
 
-// Inicialización de la aplicación principal
 bool AplicacionMensajero::OnInit() {
     VistaLogin* pantallaLogin = new VistaLogin();
     pantallaLogin->Show(true);
     return true;
 }
 
-// Implementación de VistaChat con tema oscuro
 VistaChat::VistaChat(std::shared_ptr<websocket::stream<tcp::socket>> conexion, const std::string& nombreUsuario)
     : wxFrame(nullptr, wxID_ANY, "CHAT - " + nombreUsuario, wxDefaultPosition, wxSize(900, 850)), 
       conexion(conexion), 
@@ -407,24 +404,21 @@ VistaChat::VistaChat(std::shared_ptr<websocket::stream<tcp::socket>> conexion, c
       estaEjecutando(true),
       estadoActualUsuario(EstadoUsuario::ACTIVO) {
 
-    // Configuración del tema oscuro
-    SetBackgroundColour(wxColour(32, 32, 32)); // Fondo oscuro para la ventana principal
+    SetBackgroundColour(wxColour(32, 32, 32)); 
     
     // Inicializar contactos con chat general y usuario actual
     directorioContactos.insert({"~", Contacto("Chat General", EstadoUsuario::ACTIVO)});
     
     // Crear UI
     wxPanel* panelPrincipal = new wxPanel(this);
-    panelPrincipal->SetBackgroundColour(wxColour(32, 32, 32)); // Fondo oscuro para el panel principal
+    panelPrincipal->SetBackgroundColour(wxColour(32, 32, 32)); 
     
     wxBoxSizer* diseñoPrincipal = new wxBoxSizer(wxHORIZONTAL);
 
-    // Panel izquierdo - chat (ahora a la izquierda)
     wxBoxSizer* panelIzquierdo = new wxBoxSizer(wxVERTICAL);
 
-    // Título del chat con estilo
     etiquetaTituloChat = new wxStaticText(panelPrincipal, wxID_ANY, "Chat con: Chat General");
-    etiquetaTituloChat->SetForegroundColour(wxColour(200, 200, 200)); // Texto claro para contraste
+    etiquetaTituloChat->SetForegroundColour(wxColour(200, 200, 200)); 
     wxFont fuenteTitulo = etiquetaTituloChat->GetFont();
     fuenteTitulo.SetPointSize(fuenteTitulo.GetPointSize() + 2);
     fuenteTitulo.SetWeight(wxFONTWEIGHT_BOLD);
@@ -434,22 +428,22 @@ VistaChat::VistaChat(std::shared_ptr<websocket::stream<tcp::socket>> conexion, c
     // Visualización del historial de chat con estilo oscuro
     panelHistorialChat = new wxTextCtrl(panelPrincipal, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, 
                                      wxTE_MULTILINE | wxTE_READONLY | wxTE_RICH2);
-    panelHistorialChat->SetBackgroundColour(wxColour(45, 45, 45)); // Fondo un poco más claro que el principal
-    panelHistorialChat->SetForegroundColour(wxColour(220, 220, 220)); // Texto claro para contraste
+    panelHistorialChat->SetBackgroundColour(wxColour(45, 45, 45)); 
+    panelHistorialChat->SetForegroundColour(wxColour(220, 220, 220)); 
     panelIzquierdo->Add(panelHistorialChat, 1, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 10);
 
     // Entrada de mensaje y botón de enviar con estilo oscuro
     wxBoxSizer* diseñoEntradaMensaje = new wxBoxSizer(wxHORIZONTAL);
     campoEntradaMensaje = new wxTextCtrl(panelPrincipal, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, 
                                       wxTE_PROCESS_ENTER);
-    campoEntradaMensaje->SetBackgroundColour(wxColour(60, 60, 60)); // Fondo más claro para el campo de texto
-    campoEntradaMensaje->SetForegroundColour(wxColour(220, 220, 220)); // Texto claro
+    campoEntradaMensaje->SetBackgroundColour(wxColour(60, 60, 60)); 
+    campoEntradaMensaje->SetForegroundColour(wxColour(220, 220, 220)); 
     diseñoEntradaMensaje->Add(campoEntradaMensaje, 1, wxALL, 10);
 
     botonEnviar = new wxBitmapButton(panelPrincipal, wxID_ANY, 
         wxArtProvider::GetBitmap(wxART_GO_FORWARD, wxART_BUTTON));
     botonEnviar->SetToolTip("Enviar mensaje");
-    botonEnviar->SetBackgroundColour(wxColour(70, 130, 180)); // Azul acero
+    botonEnviar->SetBackgroundColour(wxColour(70, 130, 180)); 
     diseñoEntradaMensaje->Add(botonEnviar, 0, wxTOP | wxRIGHT | wxBOTTOM, 10);
     
     panelIzquierdo->Add(diseñoEntradaMensaje, 0, wxEXPAND);
@@ -457,7 +451,6 @@ VistaChat::VistaChat(std::shared_ptr<websocket::stream<tcp::socket>> conexion, c
     // Panel derecho - contactos y estado
     wxBoxSizer* panelDerecho = new wxBoxSizer(wxVERTICAL);
 
-    // Título de la sección de contactos
     wxStaticText* tituloSeccionContactos = new wxStaticText(panelPrincipal, wxID_ANY, "Contactos y Estado");
     tituloSeccionContactos->SetForegroundColour(wxColour(200, 200, 200));
     wxFont fuenteTituloSeccion = tituloSeccionContactos->GetFont();
@@ -466,7 +459,6 @@ VistaChat::VistaChat(std::shared_ptr<websocket::stream<tcp::socket>> conexion, c
     tituloSeccionContactos->SetFont(fuenteTituloSeccion);
     panelDerecho->Add(tituloSeccionContactos, 0, wxALL | wxALIGN_CENTER_HORIZONTAL, 10);
 
-    // Selector de estado con estilo oscuro
     wxBoxSizer* diseñoEstado = new wxBoxSizer(wxHORIZONTAL);
     wxStaticText* etiquetaSelectorEstado = new wxStaticText(panelPrincipal, wxID_ANY, "Estado:");
     etiquetaSelectorEstado->SetForegroundColour(wxColour(200, 200, 200));
@@ -481,36 +473,29 @@ VistaChat::VistaChat(std::shared_ptr<websocket::stream<tcp::socket>> conexion, c
 
     panelDerecho->Add(diseñoEstado, 0, wxEXPAND);
 
-    // Visualización de estado con colores
     etiquetaEstado = new wxStaticText(panelPrincipal, wxID_ANY, "Estado actual: ACTIVO");
     etiquetaEstado->SetForegroundColour(wxColour(50, 205, 50));
     panelDerecho->Add(etiquetaEstado, 0, wxALL | wxALIGN_CENTER_HORIZONTAL, 10);
 
-    // Separador horizontal
     wxStaticLine* lineaSeparadora = new wxStaticLine(panelPrincipal, wxID_ANY, wxDefaultPosition, 
                                                 wxDefaultSize, wxLI_HORIZONTAL);
     panelDerecho->Add(lineaSeparadora, 0, wxEXPAND | wxALL, 10);
 
-    // Create a horizontal layout for the contacts header and refresh button
     wxBoxSizer* contactosHeader = new wxBoxSizer(wxHORIZONTAL);
 
-    // Add the contacts label
     wxStaticText* etiquetaTituloContactos = new wxStaticText(panelPrincipal, wxID_ANY, "Contactos:");
     etiquetaTituloContactos->SetForegroundColour(wxColour(200, 200, 200));
     etiquetaTituloContactos->SetFont(fuenteTituloSeccion);
     contactosHeader->Add(etiquetaTituloContactos, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, 10);
 
-    // Add the refresh button
     botonActualizar = new wxBitmapButton(panelPrincipal, wxID_ANY, 
         wxArtProvider::GetBitmap(wxART_REFRESH, wxART_BUTTON, wxSize(16, 16)));
     botonActualizar->SetToolTip("Actualizar lista de contactos");
     botonActualizar->SetBackgroundColour(wxColour(60, 60, 60));
     contactosHeader->Add(botonActualizar, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
 
-    // Add the header to the panel
     panelDerecho->Add(contactosHeader, 0, wxEXPAND | wxTOP, 10);
 
-    // Create and configure the contacts list
     listaContactos = new wxListBox(panelPrincipal, wxID_ANY);
     listaContactos->SetBackgroundColour(wxColour(45, 45, 45));
     listaContactos->SetForegroundColour(wxColour(220, 220, 220));
@@ -531,12 +516,11 @@ VistaChat::VistaChat(std::shared_ptr<websocket::stream<tcp::socket>> conexion, c
     diseñoBotonesContacto->Add(botonInfoUsuario, 1, wxALL, 5);
 
     botonCerrarSesion = new wxButton(panelPrincipal, wxID_ANY, "Salir");
-    botonCerrarSesion->SetBackgroundColour(wxColour(169, 68, 66)); // Rojo oscuro
-    botonCerrarSesion->SetForegroundColour(wxColour(255, 255, 255)); // Texto blanco
+    botonCerrarSesion->SetBackgroundColour(wxColour(169, 68, 66)); 
+    botonCerrarSesion->SetForegroundColour(wxColour(255, 255, 255)); 
     diseñoBotonesContacto->Add(botonCerrarSesion, 1, wxALL, 5);
     panelDerecho->Add(diseñoBotonesContacto, 0, wxEXPAND | wxBOTTOM | wxLEFT | wxRIGHT, 10);
 
-    // Organizar paneles - IMPORTANTE: Ahora el panel izquierdo es más grande (ratio 2:1)
     diseñoPrincipal->Add(panelIzquierdo, 2, wxEXPAND | wxALL, 10);
     
     // Agregar un separador vertical entre paneles
@@ -588,19 +572,19 @@ void VistaChat::actualizarVistaEstado() {
     switch (estadoActualUsuario) {
         case EstadoUsuario::ACTIVO:
             textoEstado = "ACTIVO";
-            colorEstado = wxColour(50, 205, 50);  // Verde claro para modo oscuro
+            colorEstado = wxColour(50, 205, 50);  
             break;
         case EstadoUsuario::OCUPADO:
             textoEstado = "OCUPADO";
-            colorEstado = wxColour(255, 99, 71);  // Rojo tomate para modo oscuro
+            colorEstado = wxColour(255, 99, 71);  
             break;
         case EstadoUsuario::INACTIVO:
             textoEstado = "INACTIVO";
-            colorEstado = wxColour(255, 215, 0);  // Oro para modo oscuro
+            colorEstado = wxColour(255, 215, 0);  
             break;
         case EstadoUsuario::DESCONECTADO:
             textoEstado = "DESCONECTADO";
-            colorEstado = wxColour(169, 169, 169);  // Gris oscuro para modo oscuro
+            colorEstado = wxColour(169, 169, 169);  
             break;
     }
     
@@ -618,13 +602,12 @@ void VistaChat::actualizarVistaEstado() {
 
 VistaChat::~VistaChat() {
     estaEjecutando = false;
-    historialMensajes.clear();  // Limpia historial de mensajes
-    directorioContactos.clear();  // Limpia contactos si deseas
+    historialMensajes.clear();  
+    directorioContactos.clear();  
 
     try {
         conexion->close(websocket::close_code::normal);
     } catch (...) {
-        // Ignorar errores al cerrar
     }
 }
 void VistaChat::alCerrarSesion(wxCommandEvent&) {
@@ -656,7 +639,7 @@ void VistaChat::alCerrarSesion(wxCommandEvent&) {
                 : wxDialog(parent, wxID_ANY, "Manual de Ayuda", wxDefaultPosition, wxSize(580, 480),
                            wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER) {
         
-                SetBackgroundColour(wxColour(32, 32, 32));  // Fondo oscuro
+                SetBackgroundColour(wxColour(32, 32, 32));  
         
                 wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
         
@@ -680,12 +663,10 @@ void VistaChat::alCerrarSesion(wxCommandEvent&) {
                     "   - Presione el botón 'Info' para ver detalles de un contacto seleccionado\n"
                     "   - Presione el botón de actualizar para refrescar la lista de contactos\n";
         
-                // Crear control de texto con estilo inicial
                 wxTextCtrl* areaTexto = new wxTextCtrl(this, wxID_ANY, contenido,
                     wxDefaultPosition, wxSize(550, 400),
                     wxTE_MULTILINE | wxTE_READONLY | wxTE_DONTWRAP);
         
-                // Establecer colores después de crear y llenar
                 areaTexto->SetBackgroundColour(wxColour(45, 45, 45));
                 areaTexto->SetForegroundColour(wxColour(220, 220, 220));
                 areaTexto->SetFont(wxFont(10, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
@@ -832,7 +813,6 @@ void VistaChat::iniciarEscuchaMensajes() {
                 bestia::flat_buffer buffer;
                 conexion->read(buffer);
                 
-                // Convertir datos recibidos a vector
                 std::string datosStr = bestia::buffers_to_string(buffer.data());
                 std::vector<uint8_t> mensaje(datosStr.begin(), datosStr.end());
                 
@@ -863,7 +843,7 @@ void VistaChat::iniciarEscuchaMensajes() {
                             manejarMensajeHistorialChat(mensaje);
                             break;
                         default:
-                            // Tipo de mensaje desconocido
+                            
                             break;
                     }
                 }
@@ -889,4 +869,106 @@ void VistaChat::iniciarEscuchaMensajes() {
             });
         }
     }).detach();
+}
+
+void VistaChat::alSeleccionarContacto(wxCommandEvent& evt) {
+    wxString elementoSeleccionado = listaContactos->GetString(evt.GetSelection());
+    wxString nombreContacto = elementoSeleccionado.AfterFirst(']').Trim(true).Trim(false);
+
+    if (nombreContacto == "Chat General") {
+        contactoActivo = "~";  
+    } else {
+        contactoActivo = nombreContacto.ToStdString();
+    }
+
+    wxString textoTitulo = wxString("Chat con: ") + 
+                      (contactoActivo == "~" ? wxString("Chat General") : wxString(contactoActivo));
+    etiquetaTituloChat->SetLabel(textoTitulo);
+
+    panelHistorialChat->Clear();
+    obtenerHistorialChat();
+}
+void VistaChat::alSolicitarInfoUsuario(wxCommandEvent&) {
+    if (listaContactos->GetSelection() == wxNOT_FOUND) {
+        wxMessageBox("Por favor seleccione un usuario primero", "Aviso", wxOK | wxICON_INFORMATION);
+        return;
+    }
+    
+    wxString elementoSeleccionado = listaContactos->GetString(listaContactos->GetSelection());
+    wxString nombreContacto = elementoSeleccionado.AfterFirst(']').Trim(true).Trim(false);
+    
+    if (nombreContacto == "Chat General") {
+        wxMessageBox("No se puede obtener información del chat general", "Aviso", wxOK | wxICON_INFORMATION);
+        return;
+    }
+    
+    std::string nombreUsuario = nombreContacto.ToStdString();
+    
+    try {
+        std::cout << "Solicitando información para usuario: " << nombreUsuario << std::endl;
+        
+        // Crear mensaje
+        std::vector<uint8_t> mensaje = crearSolicitudInfoUsuario(nombreUsuario);
+        
+        std::cout << "Mensaje creado: [";
+        for (uint8_t byte : mensaje) {
+            std::cout << (int)byte << " ";
+        }
+        std::cout << "]" << std::endl;
+        
+        // Enviar mensaje
+        if (conexion->is_open()) {
+            conexion->write(red::buffer(mensaje));
+            std::cout << "Mensaje enviado exitosamente" << std::endl;
+        } else {
+            std::cout << "Error: WebSocket no está abierto" << std::endl;
+            wxMessageBox("La conexión con el servidor está cerrada", "Error", wxOK | wxICON_ERROR);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Excepción al solicitar información: " << e.what() << std::endl;
+        wxMessageBox("Error al solicitar información: " + std::string(e.what()), "Error", wxOK | wxICON_ERROR);
+    }
+}
+void VistaChat::alActualizarContactos(wxCommandEvent&) {
+    obtenerListaUsuarios();
+}
+
+
+void VistaChat::alCambiarEstado(wxCommandEvent&) {
+    int seleccion = selectorEstado->GetSelection();
+    EstadoUsuario nuevoEstado;
+    
+    switch (seleccion) {
+        case 0: nuevoEstado = EstadoUsuario::ACTIVO; break;
+        case 1: nuevoEstado = EstadoUsuario::OCUPADO; break;
+        default: nuevoEstado = EstadoUsuario::ACTIVO; break;
+    }
+    
+    EstadoUsuario estadoAnterior = estadoActualUsuario;
+    
+    try {
+        std::vector<uint8_t> actualizacionEstado = crearSolicitudActualizacionEstado(nuevoEstado);
+        
+        // Actualizar UI primero
+        estadoActualUsuario = nuevoEstado;
+        actualizarVistaEstado();
+
+        // Enviar actualización de estado al servidor
+        conexion->write(red::buffer(actualizacionEstado));
+
+        // Actualizar lista de usuarios
+        std::vector<uint8_t> solicitudActualizar = crearSolicitudListaUsuarios();
+        conexion->write(red::buffer(solicitudActualizar));
+        
+        std::cout << "⏩ Estado cambiado a " << obtenerNombreEstado(nuevoEstado) << ". Notificando al servidor..." << std::endl;        
+    } catch (const std::exception& e) {
+        std::cerr << "Error al cambiar estado: " << e.what() << std::endl;
+
+        // Revertir al estado anterior en caso de error
+        estadoActualUsuario = estadoAnterior;
+        actualizarVistaEstado();
+        
+        wxMessageBox("Error al cambiar estado: " + std::string(e.what()), 
+                   "Error", wxOK | wxICON_ERROR);
+    }
 }
