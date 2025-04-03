@@ -55,3 +55,20 @@ Este sistema de mensajería implementa un servidor en C++ utilizando WebSocket s
 - Puerto: 8080
 
 
+# Sistema de Chat - Cliente 
+
+Este es el cliente gráfico del sistema de mensajería, desarrollado en C++ utilizando **wxWidgets** para la interfaz gráfica, y **Boost.Asio + Boost.Beast** para la comunicación con el servidor mediante el protocolo WebSocket.
+
+Permite a los usuarios conectarse al servidor, gestionar contactos, enviar mensajes públicos y privados, cambiar su estado (activo, ocupado, inactivo), y visualizar el historial de conversaciones.
+
+
+## Características - Cliente
+
+- Interfaz gráfica con tema oscuro
+- Soporte para múltiples contactos y chat general
+- Visualización del estado de cada contacto: activo, ocupado, inactivo o desconectado
+- Cambio de estado desde la interfaz
+- Recepción automática de mensajes entrantes
+- Alerta visual de errores o desconexiones
+- Reconexión automática ante errores
+- Manual de ayuda integrado
