@@ -611,3 +611,25 @@ VistaChat::~VistaChat() {
     } catch (...) {
     }
 }
+
+void VistaChat::alCerrarSesion(wxCommandEvent&) {
+    estaEjecutando = false;
+
+    try {
+        if (conexion && conexion->is_open()) {
+            conexion->close(websocket::close_code::normal);
+        }
+    } catch (...) {}
+
+    historialMensajes.clear();
+    directorioContactos.clear();
+
+    wxGetApp().CallAfter([]() {
+        wxMessageBox("Sesión cerrada correctamente", "Cierre de sesión", wxOK | wxICON_INFORMATION);
+
+        VistaLogin* login = new VistaLogin();
+        login->Show(true);
+    });
+
+    Close();
+}
