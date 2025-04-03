@@ -1029,3 +1029,21 @@ bool VistaChat::verificarConexion() {
     }
     return true;
 }
+
+std::vector<uint8_t> VistaChat::crearSolicitudListaUsuarios() {
+    return {MSG_CLIENTE_SOLICITAR_USUARIOS};
+}
+
+std::vector<uint8_t> VistaChat::crearSolicitudInfoUsuario(const std::string& nombreUsuario) {
+    std::vector<uint8_t> mensaje;
+    
+    mensaje.push_back(MSG_CLIENTE_OBTENER_INFO_USUARIO);
+    
+    mensaje.push_back(static_cast<uint8_t>(nombreUsuario.size()));
+    
+    for (char c : nombreUsuario) {
+        mensaje.push_back(static_cast<uint8_t>(c));
+    }
+    
+    return mensaje;
+}
