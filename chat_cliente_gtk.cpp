@@ -600,3 +600,14 @@ void VistaChat::actualizarVistaEstado() {
     
     actualizarListaContactos();
 }
+
+VistaChat::~VistaChat() {
+    estaEjecutando = false;
+    historialMensajes.clear();  
+    directorioContactos.clear();  
+
+    try {
+        conexion->close(websocket::close_code::normal);
+    } catch (...) {
+    }
+}
