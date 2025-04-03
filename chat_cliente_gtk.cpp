@@ -1088,3 +1088,160 @@ std::vector<uint8_t> VistaChat::crearSolicitudHistorial(const std::string& conta
     mensaje.insert(mensaje.end(), contactoChat.begin(), contactoChat.end());
     return mensaje;
 }
+
+
+
+// Manejadores de mensajes de protocolo
+void VistaChat::manejarMensajeError(const std::vector<uint8_t>& datosMensaje) {
+    if (datosMensaje.size() < 2) return;
+    
+    CodigoError codigoError = static_cast<CodigoError>(datosMensaje[1]);
+    wxString mensajeError;
+    
+    // Traducir código de error a mensaje amigable para el usuario
+    switch (codigoError) {
+        case ERR_USUARIO_NO_ENCONTRADO:
+            mensajeError = "El usuario solicitado no existe";
+            break;
+        case ERR_ESTADO_INVALIDO:
+            mensajeError = "Estado de usuario inválido";
+            break;
+        case ERR_MENSAJE_VACIO:
+            mensajeError = "No se puede enviar un mensaje vacío";
+            break;
+        case ERR_DESTINATARIO_DESCONECTADO:
+            mensajeError = "No se puede enviar mensaje a un usuario desconectado";
+            break;
+        default:
+            mensajeError = "Error desconocido";
+            break;
+    }
+    
+    // Mostrar mensaje de error en el hilo de UI
+    wxGetApp().CallAfter([mensajeError]() {
+        wxMessageBox(mensajeError, "Error", wxOK | wxICON_ERROR);
+    });
+}
+
+void VistaChat::manejarMensajeListaUsuarios(const std::vector<uint8_t>& datosMensaje) {
+    if (datosMensaje.size() < 2) return;
+    
+    // Obtener número de usuarios en la lista
+    uint8_t cantidadUsuarios = datosMensaje[1];
+    size_t desplazamiento = 2;
+
+    // Preservar chat general y estado del usuario actual
+    Contacto chatGeneral = directorioContactos["~"];
+    EstadoUsuario estadoUsuarioActual = EstadoUsuario::ACTIVO;
+    auto it = directorioContactos.find(usuarioActual);
+    if (it != directorioContactos.end()) {
+        estadoUsuarioActual = it->second.obtenerEstado();
+    }
+    
+    // Limpiar y reconstruir lista de contactos
+    directorioContactos.clear();
+    directorioContactos["~"] = chatGeneral;
+    directorioContactos[usuarioActual] = Contacto(usuarioActual, estadoUsuarioActual);
+    
+    // Procesar cada usuario en la lista
+    for (uint8_t i = 0; i < cantidadUsuarios; i++) {
+        if (desplazamiento >= datosMensaje.size()) break;
+        
+        // Obtener longitud del nombre de usuario y validar
+        uint8_t longitudNombreUsuario = datosMensaje[desplazamiento++];
+        if (desplazamiento + longitudNombreUsuario > datosMensaje.size()) break;
+        
+        // Extraer nombre de usuario
+        std::string nombreUsuario(datosMensaje.begin() + desplazamiento, 
+                                datosMensaje.begin() + desplazamiento + longitudNombreUsuario);
+        desplazamiento += longitudNombreUsuario;
+        
+        // Obtener estado y validar
+        if (desplazamiento >= datosMensaje.size()) break;
+        EstadoUsuario estado = static_cast<EstadoUsuario>(datosMensaje[desplazamiento++]);
+
+        // Actualizar estado del usuario actual si se encuentra en la lista
+        if (nombreUsuario == usuarioActual) {
+            estadoActualUsuario = estado;
+        }
+
+        // Añadir o actualizar contacto
+        directorioContactos.emplace(nombreUsuario, Contacto(nombreUsuario, estado));
+    }
+    
+    // Actualizar UI en el hilo principal
+    wxGetApp().CallAfter([this]() {
+        actualizarVistaEstado();
+        actualizarListaContactos();
+    });
+}
+
+void VistaChat::manejarMensajeInfoUsuario(const std::vector<uint8_t>& datosMensaje) {
+    if (datosMensaje.size() < 2) {
+        std::cerr << "Error: Mensaje de información de usuario demasiado corto" << std::endl;
+        return;
+    }
+    
+    // Extraer longitud del nombre de usuario
+    uint8_t longitudNombreUsuario = datosMensaje[1];
+    if (2 + longitudNombreUsuario > datosMensaje.size()) {
+        std::cerr << "Error: Mensaje truncado, falta el nombre de usuario completo" << std::endl;
+        return;
+    }
+    
+    // Extraer nombre de usuario
+    std::string nombreUsuario(datosMensaje.begin() + 2, datosMensaje.begin() + 2 + longitudNombreUsuario);
+    
+    // Extraer estado
+    if (2 + longitudNombreUsuario + 1 > datosMensaje.size()) {
+        std::cerr << "Error: Mensaje truncado, falta el estado del usuario" << std::endl;
+        return;
+    }
+    
+    EstadoUsuario estado = static_cast<EstadoUsuario>(datosMensaje[2 + longitudNombreUsuario]);
+    
+    // Convertir estado a texto legible
+    std::string textoEstado;
+    switch (estado) {
+        case EstadoUsuario::ACTIVO: textoEstado = "Activo"; break;
+        case EstadoUsuario::OCUPADO: textoEstado = "Ocupado"; break;
+        case EstadoUsuario::INACTIVO: textoEstado = "INACTIVO"; break;
+        case EstadoUsuario::DESCONECTADO: textoEstado = "Desconectado"; break;
+        default: textoEstado = "Desconocido"; break;
+    }
+    
+    // Imprimir información para depuración
+    std::cout << "Información de usuario recibida para: " << nombreUsuario 
+              << ", Estado: " << textoEstado << std::endl;
+    
+    // Mostrar información del usuario en el hilo de UI
+    wxGetApp().CallAfter([nombreUsuario, textoEstado]() {
+        wxString info = "Información del usuario " + wxString::FromUTF8(nombreUsuario) + ":\n" +
+                        "Estado: " + wxString::FromUTF8(textoEstado);
+    
+        wxMessageBox(info, "Información de Usuario", wxOK | wxICON_INFORMATION);
+    });
+    
+}
+
+void VistaChat::manejarMensajeNuevoUsuario(const std::vector<uint8_t>& datosMensaje) {
+    if (datosMensaje.size() < 2) return;
+    
+    // Extraer nombre de usuario
+    uint8_t longitudNombreUsuario = datosMensaje[1];
+    if (2 + longitudNombreUsuario > datosMensaje.size()) return;
+    std::string nombreUsuario(datosMensaje.begin() + 2, datosMensaje.begin() + 2 + longitudNombreUsuario);
+    
+    // Extraer estado
+    if (2 + longitudNombreUsuario + 1 > datosMensaje.size()) return;
+    EstadoUsuario estado = static_cast<EstadoUsuario>(datosMensaje[2 + longitudNombreUsuario]);
+    
+    // Añadir nuevo usuario a contactos
+    directorioContactos.emplace(nombreUsuario, Contacto(nombreUsuario, estado));
+    
+    // Actualizar UI en el hilo principal
+    wxGetApp().CallAfter([this]() {
+        actualizarListaContactos();
+    });
+}
+
